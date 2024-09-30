@@ -1,0 +1,915 @@
+---
+title: "RNA-seq Trace Read Fate"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Set seed
+rm(list = ls())
+set.seed(0)
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/ReadTrace/")
+
+
+# Load packages
+library(ggplot2)
+require(cowplot)
+library(scales)
+library(gridExtra)
+library(grid)
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r define functions}
+# Define functions:
+calculateMarginal.Query<-function(QUERY.GENOME,SAMPLE,REPLICATE){
+  data.frame(
+    Sample=SAMPLE,
+    Replicate=REPLICATE,
+    Genome=QUERY.GENOME,
+    Unmapped=sum(subset(PlacementData,Query.Genome==QUERY.GENOME & Sample ==SAMPLE & Replicate==REPLICATE & Query=="Unmapped")$Percent),
+    UniquelyMapped=sum(subset(PlacementData,Query.Genome==QUERY.GENOME & Sample ==SAMPLE & Replicate==REPLICATE & Query=="Uniquely mapped")$Percent),
+    Multimapped=sum(subset(PlacementData,Query.Genome==QUERY.GENOME & Sample ==SAMPLE & Replicate==REPLICATE & Query=="multimapped")$Percent)
+  )
+}
+
+calculateMarginal.Reference<-function(REFERENCE.GENOME,SAMPLE,REPLICATE,QUERY.GENOME){
+  data.frame(
+    Sample=SAMPLE,
+    Replicate=REPLICATE,
+    Genome=REFERENCE.GENOME,
+    Unmapped=sum(subset(PlacementData,Reference.Genome==REFERENCE.GENOME & Sample ==SAMPLE & Replicate==REPLICATE & Reference=="Unmapped" & Query.Genome==QUERY.GENOME)$Percent),
+    UniquelyMapped=sum(subset(PlacementData,Reference.Genome==REFERENCE.GENOME & Sample ==SAMPLE & Replicate==REPLICATE & Reference=="Uniquely mapped" & Query.Genome==QUERY.GENOME)$Percent),
+    Multimapped=sum(subset(PlacementData,Reference.Genome==REFERENCE.GENOME & Sample ==SAMPLE & Replicate==REPLICATE & Reference=="multimapped" & Query.Genome==QUERY.GENOME)$Percent)
+  )
+}
+```
+
+```{r load data}
+# Import data
+PlacementData<-read.delim("Combined_Counts_placement.txt",header=FALSE,sep = "\t")
+colnames(PlacementData)<-c("Counts","Code","File")
+
+PlacementData$File<-as.character(PlacementData$File)
+
+PangenomePlacementData<-read.delim("Pangenome_Combined_Counts_placement.txt",header=FALSE,sep = "\t")
+colnames(PangenomePlacementData)<-c("Counts","Code","File")
+
+PangenomePlacementData$File<-as.character(PangenomePlacementData$File)
+```
+
+```{r Filter out NAs, include=TRUE}
+### Any NA entries? (0 means none)
+sum(is.na(PlacementData[,1]))
+sum(is.na(PangenomePlacementData[,1]))
+
+### Filter them out...
+PlacementData<-PlacementData[!is.na(PlacementData[,1]),]
+PangenomePlacementData<-PangenomePlacementData[!is.na(PangenomePlacementData[,1]),]
+```
+
+```{r Clean up file names}
+### Remove file path from file name
+PlacementData$File<-unlist(lapply(PlacementData$File, function(FILENAME) str_remove(FILENAME,"mergedPlacementComparisons/")))
+PangenomePlacementData$File<-unlist(lapply(PangenomePlacementData$File, function(FILENAME) str_remove(FILENAME,"mergedPlacementComparisons/")))
+PangenomePlacementData$File<-unlist(lapply(PangenomePlacementData$File, function(FILENAME) str_remove(FILENAME,"mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted_")))
+
+### Replace GRCh38 with hg38
+PlacementData$File<-unlist(lapply(PlacementData$File, function(FILENAME) str_replace(FILENAME,"GRCh38","hg38")))
+PangenomePlacementData$File<-unlist(lapply(PangenomePlacementData$File, function(FILENAME) str_replace(FILENAME,"pangenome.hg38","Pangenome")))
+```
+
+```{r Add run information}
+### Add run information
+PlacementData$Sample<-matrix(unlist(strsplit(PlacementData$File,split = "_")),nrow=length(PlacementData$File),byrow = TRUE)[,1]
+PlacementData$Replicate<-matrix(unlist(strsplit(PlacementData$File,split = "_")),nrow=length(PlacementData$File),byrow = TRUE)[,2]
+PlacementData$Query.Genome<-matrix(unlist(strsplit(PlacementData$File,split = "_")),nrow=length(PlacementData$File),byrow = TRUE)[,3]
+PlacementData$Query.Annotations<-matrix(unlist(strsplit(PlacementData$File,split = "_")),nrow=length(PlacementData$File),byrow = TRUE)[,4]
+
+PangenomePlacementData$Sample<-matrix(unlist(strsplit(PangenomePlacementData$File,split = "_")),nrow=length(PangenomePlacementData$File),byrow = TRUE)[,1]
+PangenomePlacementData$Replicate<-matrix(unlist(strsplit(PangenomePlacementData$File,split = "_")),nrow=length(PangenomePlacementData$File),byrow = TRUE)[,2]
+PangenomePlacementData$Query.Genome<-matrix(unlist(strsplit(PangenomePlacementData$File,split = "_")),nrow=length(PangenomePlacementData$File),byrow = TRUE)[,3]
+PangenomePlacementData$Query.Annotations<-matrix(unlist(strsplit(PangenomePlacementData$File,split = "_")),nrow=length(PangenomePlacementData$File),byrow = TRUE)[,4]
+
+# Add placeholder
+PlacementData$Reference.Genome<-NA
+PlacementData$Reference.Annotations<-NA
+
+PangenomePlacementData$Reference.Genome<-"hg38"
+PangenomePlacementData$Reference.Annotations<-"gencode"
+PangenomePlacementData$Query.Annotations<-"gencode"
+
+### Define gencode runs reference info
+PlacementData[PlacementData$Query.Annotations == "gencode",]$Reference.Genome<-"hg38"
+PlacementData[PlacementData$Query.Annotations == "gencode",]$Reference.Annotations<-"gencode"
+
+### Define t2t runs reference info
+PlacementData[PlacementData$Query.Annotations == "t2t",]$Reference.Genome<-"CHM13"
+PlacementData[PlacementData$Query.Annotations == "t2t",]$Reference.Annotations<-"gencode"
+
+### Define no-annotations runs reference info
+PlacementData[PlacementData$Query.Annotations == "NA",]$Reference.Genome<-PlacementData[PlacementData$Query.Annotations == "NA",]$Query.Genome
+PlacementData[PlacementData$Query.Annotations == "NA",]$Reference.Annotations<-"gencode"
+
+### Rename NA annotations to None
+PlacementData[PlacementData$Query.Annotations == "NA",]$Query.Annotations<-"None"
+```
+
+```{r Combine data}
+### Combine data
+PlacementData<-rbind(PlacementData,PangenomePlacementData)
+rm(PangenomePlacementData)
+```
+
+```{r How many of each run? (There should be 9 entries per replicate), include=TRUE}
+print(table(PlacementData[,c(6,7)]))
+
+print(table(PlacementData[,c(6,7)])/9)
+```
+
+```{r Translate placement code and factorize}
+PlacementData$Query<-NA
+
+PlacementData$Query[PlacementData$Code==1]<-"Unmapped"
+PlacementData$Reference[PlacementData$Code==1]<-"Unmapped"
+
+PlacementData$Query[PlacementData$Code==2]<-"Uniquely mapped"
+PlacementData$Reference[PlacementData$Code==2]<-"Unmapped"
+
+PlacementData$Query[PlacementData$Code==3]<-"multimapped"
+PlacementData$Reference[PlacementData$Code==3]<-"Unmapped"
+
+PlacementData$Query[PlacementData$Code==4]<-"Unmapped"
+PlacementData$Reference[PlacementData$Code==4]<-"Uniquely mapped"
+
+PlacementData$Query[PlacementData$Code==5]<-"Uniquely mapped"
+PlacementData$Reference[PlacementData$Code==5]<-"Uniquely mapped"
+
+PlacementData$Query[PlacementData$Code==6]<-"multimapped"
+PlacementData$Reference[PlacementData$Code==6]<-"Uniquely mapped"
+
+PlacementData$Query[PlacementData$Code==7]<-"Unmapped"
+PlacementData$Reference[PlacementData$Code==7]<-"multimapped"
+
+PlacementData$Query[PlacementData$Code==8]<-"Uniquely mapped"
+PlacementData$Reference[PlacementData$Code==8]<-"multimapped"
+
+PlacementData$Query[PlacementData$Code==9]<-"multimapped"
+PlacementData$Reference[PlacementData$Code==9]<-"multimapped"
+
+# convert to factor
+PlacementData$Query<-factor(PlacementData$Query,levels=c("Unmapped","Uniquely mapped","multimapped"))
+PlacementData$Reference<-factor(PlacementData$Reference,levels=c("Unmapped","Uniquely mapped","multimapped"))
+```
+
+```{r Calculate Percentage of each code}
+# Define placeholder
+PlacementData$Percent<-NA
+
+# Calculate
+for (FILE in unique(PlacementData$File)) {
+  PlacementData$Percent[PlacementData$File==FILE]<-PlacementData$Counts[PlacementData$File==FILE]/sum(PlacementData$Counts[PlacementData$File==FILE])
+}
+```
+
+```{r Rename individual assemblies to simplify plotting}
+PlacementData$Query.Genome[grep("mat",PlacementData$Query.Genome)]<-"Maternal"
+PlacementData$Query.Genome[grep("pat",PlacementData$Query.Genome)]<-"Paternal"
+PlacementData$Reference.Genome[grep("mat",PlacementData$Reference.Genome)]<-"Maternal"
+PlacementData$Reference.Genome[grep("pat",PlacementData$Reference.Genome)]<-"Paternal"
+```
+
+```{r Subset out alternative anotation sets}
+NoAnnotations.PlacementData<-subset(PlacementData, Query.Annotations =="None")
+T2T.PlacementData<-subset(PlacementData, Query.Annotations =="t2t")
+```
+
+```{r Subset for gencode annotations analysis}
+PlacementData<-subset(PlacementData, Query.Annotations =="gencode")
+```
+
+```{r Calculate per Code mean and standard deviation of Percent as a function of Query genome and replicate}
+PlacementCode.Summary<-PlacementData %>%
+  group_by(Code,Query.Genome) %>%
+  summarise(
+    Mean=mean(100*Percent),
+    SD=sd(100*Percent)
+  )
+
+# Round Mean and SD to 4 decimal places
+PlacementCode.Summary$Mean<-round(PlacementCode.Summary$Mean,6)
+PlacementCode.Summary$SD<-round(PlacementCode.Summary$SD,6)
+
+```
+
+```{r print code 1 summary, include=TRUE}
+print("Reference: Unmapped, Query: Unmapped")
+subset(PlacementCode.Summary,Code==1)
+```
+
+```{r print code 2 summary, include=TRUE}
+print("Reference: Unmapped, Query: Uniquely mapped")
+subset(PlacementCode.Summary,Code==2)
+```
+
+```{r print code 3 summary, include=TRUE}
+print("Reference: Unmapped, Query: Multimapped")
+subset(PlacementCode.Summary,Code==3)
+```
+
+```{r print code 4 summary, include=TRUE}
+print("Reference: Uniquely mapped, Query: Unmapped")
+subset(PlacementCode.Summary,Code==4)
+```
+
+```{r print code 5 summary, include=TRUE}
+print("Reference: Uniquely mapped, Query: Uniquely mapped")
+subset(PlacementCode.Summary,Code==5)
+```
+
+```{r print code 6 summary, include=TRUE}
+print("Reference: Uniquely mapped, Query: Multimapped")
+subset(PlacementCode.Summary,Code==6)
+```
+
+```{r print code 7 summary, include=TRUE}
+print("Reference: Multimapped, Query: Unmapped")
+subset(PlacementCode.Summary,Code==7)
+```
+
+```{r print code 8 summary, include=TRUE}
+print("Reference: Multimapped, Query: Uniquely mapped")
+subset(PlacementCode.Summary,Code==8)
+```
+
+```{r print code 9 summary, include=TRUE}
+print("Reference: Multimapped, Query: Multimapped")
+subset(PlacementCode.Summary,Code==9)
+```
+
+```{r Define fate agreement}
+PlacementData$Agreement<-NA
+PlacementData$Agreement[PlacementData$Query == PlacementData$Reference]<-"Agree"
+PlacementData$Agreement[PlacementData$Query != PlacementData$Reference]<-"Disagree"
+```
+
+```{r Plot individual code plots, include=TRUE, fig.width=25, fig.height=10}
+CodePlot.1<-ggplot( subset(PlacementData, Code==1),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Unmapped")
+
+CodePlot.2<-ggplot( subset(PlacementData, Code==2),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Uniquely mapped")
+
+CodePlot.3<-ggplot( subset(PlacementData, Code==3),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Multimapped")
+
+CodePlot.4<-ggplot( subset(PlacementData, Code==4),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Unmapped")
+
+CodePlot.5<-ggplot( subset(PlacementData, Code==5),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Uniquely mapped")
+
+CodePlot.6<-ggplot( subset(PlacementData, Code==6),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Multimapped")
+
+CodePlot.7<-ggplot( subset(PlacementData, Code==7),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Unmapped")
+
+CodePlot.8<-ggplot( subset(PlacementData, Code==8),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Uniquely mapped")
+
+CodePlot.9<-ggplot( subset(PlacementData, Code==9),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Multimapped")
+
+FatePlacementBarplots.Panel<-plot_grid(CodePlot.1,CodePlot.2,CodePlot.3,CodePlot.4,CodePlot.5,CodePlot.6,CodePlot.7,CodePlot.8,CodePlot.9, ncol = 3, labels = c("J","K","L","M","N","O","P","Q","R"))
+
+FatePlacementBarplots.Panel
+```
+
+```{r save split fate barplots}
+ggsave2("Gencode_FatePlacementBarplots.Panel.png",plot = FatePlacementBarplots.Panel, units = "in", width = 27, height = 10)
+```
+
+```{r Calculate marginals}
+MarginalsDF<-lapply(unique(PlacementData$Query.Genome),
+       function(QUERY.GENOME) lapply(
+                                  unique(PlacementData$Sample),
+                                  function(SAMPLE) lapply(
+                                                      unique(PlacementData$Replicate),
+                                                      function(REPLICATE) calculateMarginal.Query(QUERY.GENOME,SAMPLE,REPLICATE)
+                                                        ) %>% bind_rows()
+                              ) %>% bind_rows()
+    ) %>% bind_rows()
+
+
+MarginalsDF<-rbind(
+  MarginalsDF,
+  lapply(unique(PlacementData$Reference.Genome),
+         function(REFERENCE.GENOME) lapply(
+           unique(PlacementData$Sample),
+           function(SAMPLE) lapply(
+             unique(PlacementData$Replicate),
+             function(REPLICATE) calculateMarginal.Reference(REFERENCE.GENOME,SAMPLE,REPLICATE,"CHM13")
+           ) %>% bind_rows()
+         ) %>% bind_rows()
+  ) %>% bind_rows()
+)
+
+# Reshape object to prep for plotting
+MarginalsDF.Long<-gather(MarginalsDF,Placement,Percent,Unmapped:Multimapped)
+
+MarginalsDF.Long$Genome<-as.character(MarginalsDF.Long$Genome)
+```
+
+```{r calculate margnials summary statistics for each Placement as a function of query genome, include=TRUE}
+MarginalsSummary<-MarginalsDF.Long %>%
+  group_by(Genome,Placement) %>%
+  summarise(
+    Mean=mean(100*Percent),
+    SD=sd(100*Percent)
+  )
+```
+
+```{r print marginals summary statistics, include=TRUE}
+# Print per Query genome
+subset(MarginalsSummary,Genome=="CHM13")
+subset(MarginalsSummary,Genome=="Paternal")
+subset(MarginalsSummary,Genome=="Maternal")
+subset(MarginalsSummary,Genome=="Pangenome")
+```
+
+```{r Generate marginals plot, include=TRUE, fig.width=10, fig.height=4}
+MarginalsPlot<-ggplot(MarginalsDF.Long,aes(x=Genome,y=100*Percent,fill=Placement))+
+  geom_bar(stat = 'identity')+
+  facet_grid(Replicate~Sample)+
+  ylab("% of mapped reads")+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_viridis(discrete = TRUE, option = "cividis")+
+  theme(legend.position = "bottom")
+
+MarginalsPlot
+```
+
+```{r save marginals plot}
+ggsave2(filename = "Gencode_MarginalsPlacementPlot.png",plot = MarginalsPlot,units = "in", height = 4, width = 10)
+```
+
+```{r Calculate % fate change}
+RatioData<-lapply(
+  unique(PlacementData$File),
+  function(FILE) data.frame(
+    file=FILE,
+    #PlacementRatio=sum(PlacementData$Counts[PlacementData$File==FILE & PlacementData$Agreement=="Disagree"])/sum(PlacementData$Counts[PlacementData$File==FILE & PlacementData$Agreement=="Agree"]),
+    #Unique.Multi.Ratio=PlacementData$Percent[PlacementData$File==FILE & PlacementData$Code==6]/PlacementData$Percent[PlacementData$File==FILE & PlacementData$Code==8],
+    Disagreement.Percent=100*sum(PlacementData$Counts[PlacementData$File==FILE & PlacementData$Agreement=="Disagree"])/sum(PlacementData$Counts[PlacementData$File==FILE])
+  )
+  ) %>% bind_rows()
+
+### Add run information
+# Make sure it's imported file name as a character string
+RatioData$file<-as.character(RatioData$file)
+
+
+# Add info
+RatioData$Sample<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[1]] ))
+RatioData$Replicate<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[2]] ))
+RatioData$Query<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[3]] ))
+RatioData$Query.Annotations<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[4]] ))
+RatioData$Reference<-"hg38"
+RatioData$Reference.Annotations<-"gencode"
+
+# Change individual assembly name to simplify plotting
+RatioData$Query[grep("mat",RatioData$Query)]<-"Maternal"
+RatioData$Query[grep("pat",RatioData$Query)]<-"Paternal"
+
+RatioData$Query.Annotations[RatioData$Query.Annotations=="vg"]<-"gencode"
+```
+
+```{r All combined RatioData summary statistics, include=TRUE}
+mean(RatioData[,2])
+sd(RatioData[,2])
+```
+
+```{r Split RatioData by Query, include=TRUE}
+print("CHM13")
+mean(subset(RatioData,Query=="CHM13")[,2])
+sd(subset(RatioData,Query=="CHM13")[,2])
+
+print("Maternal")
+mean(subset(RatioData,Query=="Maternal")[,2])
+sd(subset(RatioData,Query=="Maternal")[,2])
+
+print("Paternal")
+mean(subset(RatioData,Query=="Paternal")[,2])
+sd(subset(RatioData,Query=="Paternal")[,2])
+
+print("Pangenome")
+mean(subset(RatioData,Query=="Pangenome")[,2])
+sd(subset(RatioData,Query=="Pangenome")[,2])
+```
+```{r Plot fate change, include=TRUE, fig.width=19, fig.height=4}
+FateChangePlot<-ggplot(RatioData,aes(x=Query,y=Disagreement.Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  scale_y_continuous(expand = c(0,0),limits = c(0,25))+
+  ylab("%Reads changing fates")+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  theme(legend.position = "bottom")+
+  ggtitle("RNAseq - changes in read fate")
+
+FateChangePlot
+```
+
+```{r save fate change plot}
+ggsave2("Gencode_FateChangePlot.png",plot = plot_grid(FateChangePlot,ncol=1,labels = "B"),units = "in",width = 19,height = 4)
+```
+
+```{r Save % Fate change table}
+write.table(x = RatioData[,-1], file = "Gencode_Percent_FateChanged.txt", quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
+```
+
+
+```{r None annotations analysis - Define agreement}
+# Define agreement
+NoAnnotations.PlacementData$Agreement<-NA
+NoAnnotations.PlacementData$Agreement[NoAnnotations.PlacementData$Query == NoAnnotations.PlacementData$Reference]<-"Agree"
+NoAnnotations.PlacementData$Agreement[NoAnnotations.PlacementData$Query != NoAnnotations.PlacementData$Reference]<-"Disagree"
+```
+
+```{r Plot None annotations individual code plots, include=TRUE, fig.width=24, fig.height=10}
+# Plot individual code plots
+CodePlot.1<-ggplot( subset(NoAnnotations.PlacementData, Code==1),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Unmapped")
+
+CodePlot.2<-ggplot( subset(NoAnnotations.PlacementData, Code==2),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Uniquely mapped")
+
+CodePlot.3<-ggplot( subset(NoAnnotations.PlacementData, Code==3),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Multimapped")
+
+CodePlot.4<-ggplot( subset(NoAnnotations.PlacementData, Code==4),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Unmapped")
+
+CodePlot.5<-ggplot( subset(NoAnnotations.PlacementData, Code==5),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Uniquely mapped")
+
+CodePlot.6<-ggplot( subset(NoAnnotations.PlacementData, Code==6),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Multimapped")
+
+CodePlot.7<-ggplot( subset(NoAnnotations.PlacementData, Code==7),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Unmapped")
+
+CodePlot.8<-ggplot( subset(NoAnnotations.PlacementData, Code==8),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Uniquely mapped")
+
+CodePlot.9<-ggplot( subset(NoAnnotations.PlacementData, Code==9),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Multimapped")
+
+FatePlacementBarplots.Panel<-plot_grid(CodePlot.1,CodePlot.2,CodePlot.3,CodePlot.4,CodePlot.5,CodePlot.6,CodePlot.7,CodePlot.8,CodePlot.9, ncol = 3, labels = "AUTO")
+
+FatePlacementBarplots.Panel
+```
+
+```{r save None annotations split fate barplots}
+ggsave2("None_FatePlacementBarplots.Panel.png",plot = FatePlacementBarplots.Panel, units = "in", width = 24, height = 10)
+```
+
+```{r None annotations Calculate marginals}
+### Calculate marginals
+MarginalsDF<-lapply(unique(NoAnnotations.PlacementData$Query.Genome),
+                    function(QUERY.GENOME) lapply(
+                      unique(NoAnnotations.PlacementData$Sample),
+                      function(SAMPLE) lapply(
+                        unique(NoAnnotations.PlacementData$Replicate),
+                        function(REPLICATE) calculateMarginal.Query(QUERY.GENOME,SAMPLE,REPLICATE)
+                      ) %>% bind_rows()
+                    ) %>% bind_rows()
+) %>% bind_rows()
+
+
+MarginalsDF<-rbind(
+  MarginalsDF,
+  lapply(unique(NoAnnotations.PlacementData$Reference.Genome),
+         function(REFERENCE.GENOME) lapply(
+           unique(NoAnnotations.PlacementData$Sample),
+           function(SAMPLE) lapply(
+             unique(NoAnnotations.PlacementData$Replicate),
+             function(REPLICATE) calculateMarginal.Reference(REFERENCE.GENOME,SAMPLE,REPLICATE,"CHM13")
+           ) %>% bind_rows()
+         ) %>% bind_rows()
+  ) %>% bind_rows()
+)
+
+# Reshape object to prep for plotting
+MarginalsDF.Long<-gather(MarginalsDF,Placement,Percent,Unmapped:Multimapped)
+
+MarginalsDF.Long$Genome<-as.character(MarginalsDF.Long$Genome)
+```
+
+```{r None annotations Generate marginals plot, include=TRUE, fig.width=10, fig.height=4}
+### Generate marginals plot
+MarginalsPlot<-ggplot(MarginalsDF.Long,aes(x=Genome,y=100*Percent,fill=Placement))+
+  geom_bar(stat = 'identity')+
+  facet_grid(Replicate~Sample)+
+  ylab("% of mapped reads")+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_viridis(discrete = TRUE, option = "cividis")+
+  theme(legend.position = "bottom")
+
+MarginalsPlot
+```
+
+```{r save None annotations marginals plot}
+ggsave2(filename = "None_MarginalsPlacementPlot.png",plot = MarginalsPlot,units = "in", height = 4, width = 10)
+```
+
+```{r None annotationsCalculate % fate change}
+RatioData<-lapply(
+  unique(NoAnnotations.PlacementData$File),
+  function(FILE) data.frame(
+    file=FILE,
+    #PlacementRatio=sum(NoAnnotations.PlacementData$Counts[NoAnnotations.PlacementData$File==FILE & NoAnnotations.PlacementData$Agreement=="Disagree"])/sum(NoAnnotations.PlacementData$Counts[NoAnnotations.PlacementData$File==FILE & NoAnnotations.PlacementData$Agreement=="Agree"]),
+    #Unique.Multi.Ratio=NoAnnotations.PlacementData$Percent[NoAnnotations.PlacementData$File==FILE & NoAnnotations.PlacementData$Code==6]/NoAnnotations.PlacementData$Percent[NoAnnotations.PlacementData$File==FILE & NoAnnotations.PlacementData$Code==8],
+    Disagreement.Percent=100*sum(NoAnnotations.PlacementData$Counts[NoAnnotations.PlacementData$File==FILE & NoAnnotations.PlacementData$Agreement=="Disagree"])/sum(NoAnnotations.PlacementData$Counts[NoAnnotations.PlacementData$File==FILE])
+  )
+) %>% bind_rows()
+
+### Add run information
+# Make sure it's imported file name as a character string
+RatioData$file<-as.character(RatioData$file)
+
+# Add info
+RatioData$Sample<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[1]] ))
+RatioData$Replicate<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[2]] ))
+RatioData$Query<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[3]] ))
+RatioData$Query.Annotations<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[4]] ))
+RatioData$Reference<-RatioData$Query
+RatioData$Reference.Annotations<-"gencode"
+RatioData$Query.Annotations<-"None"
+
+# Change individual assembly name to simplify plotting
+RatioData$Query[grep("mat",RatioData$Query)]<-"Maternal"
+RatioData$Query[grep("pat",RatioData$Query)]<-"Paternal"
+RatioData$Reference[grep("mat",RatioData$Reference)]<-"Maternal"
+RatioData$Reference[grep("pat",RatioData$Reference)]<-"Paternal"
+```
+
+```{r None annotations plot fate change, include=TRUE, fig.width=10, fig.height=6}
+FateChangePlot<-ggplot(RatioData,aes(x=Query,y=Disagreement.Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_wrap(~Sample)+
+  scale_y_continuous(expand = c(0,0),limits = c(0,5))+
+  ylab("%Reads changing fates")+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+FateChangePlot
+```
+
+```{r save None annotations fate change plot}
+ggsave2("None_FateChangePlot.png",plot = FateChangePlot,units = "in",width = 10,height = 6)
+```
+
+```{r None annotations Save % Fate change table}
+### Save % Fate change table
+write.table(x = RatioData[,-1], file = "None_Percent_FateChanged.txt", quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
+```
+
+```{r T2T annotations analysis - Define agreement}
+# Define agreement
+T2T.PlacementData$Agreement<-NA
+T2T.PlacementData$Agreement[T2T.PlacementData$Query == T2T.PlacementData$Reference]<-"Agree"
+T2T.PlacementData$Agreement[T2T.PlacementData$Query != T2T.PlacementData$Reference]<-"Disagree"
+```
+
+```{r Plot T2T annotations individual code plots, include=TRUE, fig.width=24, fig.height=10}
+# Plot individual code plots
+CodePlot.1<-ggplot( subset(T2T.PlacementData, Code==1),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Unmapped")
+
+CodePlot.2<-ggplot( subset(T2T.PlacementData, Code==2),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Uniquely mapped")
+
+CodePlot.3<-ggplot( subset(T2T.PlacementData, Code==3),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Unmapped, Query: Multimapped")
+
+CodePlot.4<-ggplot( subset(T2T.PlacementData, Code==4),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Unmapped")
+
+CodePlot.5<-ggplot( subset(T2T.PlacementData, Code==5),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Uniquely mapped")
+
+CodePlot.6<-ggplot( subset(T2T.PlacementData, Code==6),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Uniquely mapped, Query: Multimapped")
+
+CodePlot.7<-ggplot( subset(T2T.PlacementData, Code==7),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Unmapped")
+
+CodePlot.8<-ggplot( subset(T2T.PlacementData, Code==8),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Uniquely mapped")
+
+CodePlot.9<-ggplot( subset(T2T.PlacementData, Code==9),aes(x=Query.Genome,y=100*Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_grid(~Sample)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  ylab("Percent of reads")+
+  ggtitle("Reference: Multimapped, Query: Multimapped")
+
+FatePlacementBarplots.Panel<-plot_grid(CodePlot.1,CodePlot.2,CodePlot.3,CodePlot.4,CodePlot.5,CodePlot.6,CodePlot.7,CodePlot.8,CodePlot.9, ncol = 3, labels = "AUTO")
+
+FatePlacementBarplots.Panel
+```
+```{r save T2T annotations split fate barplots}
+ggsave2("T2T_FatePlacementBarplots.Panel.png",plot = FatePlacementBarplots.Panel, units = "in", width = 24, height = 10)
+```
+
+```{r T2T annotations Calculate marginals}
+### Calculate marginals
+MarginalsDF<-lapply(unique(T2T.PlacementData$Query.Genome),
+                    function(QUERY.GENOME) lapply(
+                      unique(T2T.PlacementData$Sample),
+                      function(SAMPLE) lapply(
+                        unique(T2T.PlacementData$Replicate),
+                        function(REPLICATE) calculateMarginal.Query(QUERY.GENOME,SAMPLE,REPLICATE)
+                      ) %>% bind_rows()
+                    ) %>% bind_rows()
+) %>% bind_rows()
+
+
+MarginalsDF<-rbind(
+  MarginalsDF,
+  lapply(unique(T2T.PlacementData$Reference.Genome),
+         function(REFERENCE.GENOME) lapply(
+           unique(T2T.PlacementData$Sample),
+           function(SAMPLE) lapply(
+             unique(T2T.PlacementData$Replicate),
+             function(REPLICATE) calculateMarginal.Reference(REFERENCE.GENOME,SAMPLE,REPLICATE,"CHM13")
+           ) %>% bind_rows()
+         ) %>% bind_rows()
+  ) %>% bind_rows()
+)
+
+# Reshape object to prep for plotting
+MarginalsDF.Long<-gather(MarginalsDF,Placement,Percent,Unmapped:Multimapped)
+
+MarginalsDF.Long$Genome<-as.character(MarginalsDF.Long$Genome)
+```
+
+```{r T2T annotations Generate marginals plot, include=TRUE, fig.width=6, fig.height=4}
+### Generate marginals plot
+MarginalsPlot<-ggplot(MarginalsDF.Long,aes(x=Genome,y=100*Percent,fill=Placement))+
+  geom_bar(stat = 'identity')+
+  facet_grid(Replicate~Sample)+
+  ylab("% of mapped reads")+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_viridis(discrete = TRUE, option = "cividis")+
+  theme(legend.position = "bottom")
+
+MarginalsPlot
+```
+
+```{r save T2T annotations marginals plot}
+ggsave2(filename = "T2T_MarginalsPlacementPlot.png",plot = MarginalsPlot,units = "in", height = 4, width = 6)
+```
+
+```{r T2T annotations Calculate % fate change}
+### Calculate % fate change
+RatioData<-lapply(
+  unique(T2T.PlacementData$File),
+  function(FILE) data.frame(
+    file=FILE,
+    #PlacementRatio=sum(T2T.PlacementData$Counts[T2T.PlacementData$File==FILE & T2T.PlacementData$Agreement=="Disagree"])/sum(T2T.PlacementData$Counts[T2T.PlacementData$File==FILE & T2T.PlacementData$Agreement=="Agree"]),
+    #Unique.Multi.Ratio=T2T.PlacementData$Percent[T2T.PlacementData$File==FILE & T2T.PlacementData$Code==6]/T2T.PlacementData$Percent[T2T.PlacementData$File==FILE & T2T.PlacementData$Code==8],
+    Disagreement.Percent=100*sum(T2T.PlacementData$Counts[T2T.PlacementData$File==FILE & T2T.PlacementData$Agreement=="Disagree"])/sum(T2T.PlacementData$Counts[T2T.PlacementData$File==FILE])
+  )
+) %>% bind_rows()
+
+### Add run information
+# Make sure it's imported file name as a character string
+RatioData$file<-as.character(RatioData$file)
+
+# Add info
+RatioData$Sample<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[1]] ))
+RatioData$Replicate<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[2]] ))
+RatioData$Query<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[3]] ))
+RatioData$Query.Annotations<-unlist(lapply(RatioData$file,function(FILE) strsplit(FILE,split = "_")[[1]][[4]] ))
+RatioData$Reference<-RatioData$Query
+RatioData$Reference.Annotations<-"gencode"
+RatioData$Query.Annotations<-"T2T"
+```
+
+```{r T2T annotations plot fate change, include=TRUE, fig.width=10, fig.height=6}
+### Plot fate change
+FateChangePlot<-ggplot(RatioData,aes(x=Query,y=Disagreement.Percent,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  facet_wrap(~Sample)+
+  scale_y_continuous(expand = c(0,0),limits = c(0,1))+
+  ylab("%Reads changing fates")+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+FateChangePlot
+```
+
+```{r save T2T annotations fate change plot}
+ggsave2("T2T_FateChangePlot.png",plot = FateChangePlot,units = "in",width = 10,height = 6)
+```
+
+```{r T2T annotations Save % Fate change table}
+### Save % Fate change table
+write.table(x = RatioData[,-1], file = "T2T_Percent_FateChanged.txt", quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
+```
+

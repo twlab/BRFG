@@ -1,0 +1,83 @@
+---
+title: "Comparing SV enriched regions to HGSVC SV hotspots"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HGSVC_SV_Enrichment/")
+rm(list = ls())
+set.seed(0)
+
+library(ggplot2)
+require(cowplot)
+library(scales)
+library(gridExtra)
+library(grid)
+library(dplyr)
+library(tidyr)
+library(lsr)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r read annotations, include=FALSE}
+HGSVCdata<-read.delim("HGSVC_SV_Hotspots.bed", header = TRUE)
+
+SV_Enriched_240Kb<-read.delim("../SV_Enrichment/240Kb_Regions_Enriched_in_SV_SigOnly.txt", header = TRUE)
+```
+
+```{r Generate Hot spot Manhatten like plots, include=FALSE}
+makeManhattenPlot<-function(Chrome){
+  ggplot(subset(SV_Enriched_240Kb, Chr==Chrome), aes(x=Start/1000000,y=Count) )+
+  geom_rect(data = subset(HGSVCdata, Chr==Chrome), inherit.aes = FALSE,
+            aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf),
+            fill = "#ff7f5d", alpha = 0.6)+
+  geom_point(size=1, alpha=1, color="#34487f")+
+  #geom_point(data=subset(HGSVCdata, Chr==Chrome), aes(x=Start/1000000, y=N.of.events), size=1, color="#c03a46")+
+  CS.THEME+
+  facet_wrap(~Chr)+
+  xlab("Postion (Mb)")
+  
+}
+
+plot_list <- list(
+  makeManhattenPlot("chr1")+theme(legend.position = "none"),
+  makeManhattenPlot("chr2")+theme(legend.position = "none"),
+  makeManhattenPlot("chr3")+theme(legend.position = "none"),
+  makeManhattenPlot("chr4")+theme(legend.position = "none"),
+  makeManhattenPlot("chr5")+theme(legend.position = "none"),
+  makeManhattenPlot("chr6")+theme(legend.position = "none"),
+  makeManhattenPlot("chr7")+theme(legend.position = "none"),
+  makeManhattenPlot("chr8")+theme(legend.position = "none"),
+  makeManhattenPlot("chr9")+theme(legend.position = "none"),
+  makeManhattenPlot("chr10")+theme(legend.position = "none"),
+  makeManhattenPlot("chr11")+theme(legend.position = "none"),
+  makeManhattenPlot("chr12")+theme(legend.position = "none"),
+  makeManhattenPlot("chr13")+theme(legend.position = "none"),
+  makeManhattenPlot("chr14")+theme(legend.position = "none"),
+  makeManhattenPlot("chr15")+theme(legend.position = "none"),
+  makeManhattenPlot("chr16")+theme(legend.position = "none"),
+  makeManhattenPlot("chr17")+theme(legend.position = "none"),
+  makeManhattenPlot("chr18")+theme(legend.position = "none"),
+  makeManhattenPlot("chr19")+theme(legend.position = "none"),
+  makeManhattenPlot("chr20")+theme(legend.position = "none"),
+  makeManhattenPlot("chr21")+theme(legend.position = "none"),
+  makeManhattenPlot("chr22")+theme(legend.position = "none")
+)
+
+ManhattenPanel<-plot_grid(plotlist = plot_list, ncol = 4, nrow = 6)
+ggsave(filename = "Compare_HGSVC_HotSpots_ToSigOnlySVRegions.png", plot = ManhattenPanel, units = "in", width = 12, height = 12)
+```
+```{r Plot Manhattan like plot comparing to HGSVC, include=TRUE, fig.width=16, fig.height=16}
+ManhattenPanel
+```
+
+
+
+
+
+
+

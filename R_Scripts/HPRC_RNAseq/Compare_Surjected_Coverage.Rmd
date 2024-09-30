@@ -1,0 +1,662 @@
+---
+title: "RNA-seq compare coverage between surjected pangenome and GRCh38"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Set seed
+set.seed(0)
+rm(list=ls())
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/")
+
+
+# Load packages
+library(ggplot2)
+require(cowplot)
+library(viridis)
+library(tidyr)
+library(dplyr)
+library(data.table)
+library(rtracklayer)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r define functions}
+# Create a function to calculate the sum of scores in 24Kb intervals
+sum_scores_24Kb <- function(bedgraph) {
+  bedgraph %>%
+    mutate(interval = floor(start / 24000) * 24000) %>%
+    group_by(seqnames, interval) %>%
+    summarise(score_sum = sum(score, na.rm = TRUE), .groups = 'drop') %>%
+    arrange(seqnames, interval)
+}
+```
+
+```{r load bedgraph files - HG00621}
+# Load bedgraph files
+# HG00621, HG00741, HG01952, HG01978, HG03516
+
+#HG00621
+HG00621_A_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00621_1.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG00621_B_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00621_2.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG00621_A_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00621_replicate_1_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG00621_B_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00621_replicate_2_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG00621_A_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00621_1.GRCh38.NA__align__rep1HG00621-1_genome.bedGraph")
+HG00621_B_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00621_2.GRCh38.NA__align__rep1HG00621-2_genome.bedGraph")
+```
+
+```{r Convert to dataframe - HG00621}
+# Convert to dataframe
+HG00621_A_GRCh38_gencode<-as.data.frame(HG00621_A_GRCh38_gencode)
+HG00621_A_pangenome<-as.data.frame(HG00621_A_pangenome)
+HG00621_A_GRCh38_none<-as.data.frame(HG00621_A_GRCh38_none)
+HG00621_B_GRCh38_gencode<-as.data.frame(HG00621_B_GRCh38_gencode)
+HG00621_B_pangenome<-as.data.frame(HG00621_B_pangenome)
+HG00621_B_GRCh38_none<-as.data.frame(HG00621_B_GRCh38_none)
+```
+
+```{r Apply sum scores function - HG00621}
+HG00621_A_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG00621_A_GRCh38_gencode)
+HG00621_A_pangenome_24Kb <- sum_scores_24Kb(HG00621_A_pangenome)
+HG00621_A_GRCh38_none_24Kb <- sum_scores_24Kb(HG00621_A_GRCh38_none)
+HG00621_B_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG00621_B_GRCh38_gencode)
+HG00621_B_pangenome_24Kb <- sum_scores_24Kb(HG00621_B_pangenome)
+HG00621_B_GRCh38_none_24Kb <- sum_scores_24Kb(HG00621_B_GRCh38_none)
+
+# Convert to dataframes
+HG00621_A_GRCh38_gencode_24Kb<-as.data.frame(HG00621_A_GRCh38_gencode_24Kb)
+HG00621_A_pangenome_24Kb<-as.data.frame(HG00621_A_pangenome_24Kb)
+HG00621_A_GRCh38_none_24Kb<-as.data.frame(HG00621_A_GRCh38_none_24Kb)
+HG00621_B_GRCh38_gencode_24Kb<-as.data.frame(HG00621_B_GRCh38_gencode_24Kb)
+HG00621_B_pangenome_24Kb<-as.data.frame(HG00621_B_pangenome_24Kb)
+HG00621_B_GRCh38_none_24Kb<-as.data.frame(HG00621_B_GRCh38_none_24Kb)
+```
+
+
+```{r merge dataframes - HG00621}
+# Merge dataframes
+
+# Rename columns to avoid conflicts
+colnames(HG00621_A_GRCh38_gencode_24Kb)[3]<-"score_sum_A_GRCh38.gencode"
+colnames(HG00621_A_pangenome_24Kb)[3]<-"score_sum_A_pangenome"
+colnames(HG00621_A_GRCh38_none_24Kb)[3]<-"score_sum_A_GRCh38.none"
+colnames(HG00621_B_GRCh38_gencode_24Kb)[3]<-"score_sum_B_GRCh38.gencode"
+colnames(HG00621_B_pangenome_24Kb)[3]<-"score_sum_B_pangenome"
+colnames(HG00621_B_GRCh38_none_24Kb)[3]<-"score_sum_B_GRCh38.none"
+
+# Perform the joins after renaming, ensuring each dataset is joined sequentially
+HG00621_24Kb <- HG00621_A_GRCh38_gencode_24Kb %>%
+  left_join(HG00621_A_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG00621_A_GRCh38_none_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG00621_B_GRCh38_gencode_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG00621_B_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG00621_B_GRCh38_none_24Kb, by = c("seqnames", "interval"))
+
+# Normalize by total sum of scores
+HG00621_24Kb$cpm_sum_A_GRCh38.gencode<-HG00621_24Kb$score_sum_A_GRCh38.gencode/(sum(HG00621_A_GRCh38_gencode$score)/1000000)
+HG00621_24Kb$cpm_sum_A_pangenome<-HG00621_24Kb$score_sum_A_pangenome/(sum(HG00621_A_pangenome$score)/1000000)
+HG00621_24Kb$cpm_sum_A_GRCh38.none<-HG00621_24Kb$score_sum_A_GRCh38.none/(sum(HG00621_A_GRCh38_none$score)/1000000)
+HG00621_24Kb$cpm_sum_B_GRCh38.gencode<-HG00621_24Kb$score_sum_B_GRCh38.gencode/(sum(HG00621_B_GRCh38_gencode$score)/1000000)
+HG00621_24Kb$cpm_sum_B_pangenome<-HG00621_24Kb$score_sum_B_pangenome/(sum(HG00621_B_pangenome$score)/1000000)
+HG00621_24Kb$cpm_sum_B_GRCh38.none<-HG00621_24Kb$score_sum_B_GRCh38.none/(sum(HG00621_B_GRCh38_none$score)/1000000)
+```
+
+```{r compare summed coverage - HG00621, include=TRUE}
+# Calculate R^2 for GRCh38 gencode vs pangenome and GRCh38 none
+# Then combine all values into a single dataframe
+HG00621_r2_A_GRCh38.gencode <- summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG00621_24Kb))$r.squared
+HG00621_r2_A_GRCh38.none <- summary(lm(cpm_sum_A_GRCh38.none ~ cpm_sum_A_pangenome, HG00621_24Kb))$r.squared
+HG00621_r2_B_GRCh38.gencode <- summary(lm(cpm_sum_B_GRCh38.gencode ~ cpm_sum_B_pangenome, HG00621_24Kb))$r.squared
+HG00621_r2_B_GRCh38.none <- summary(lm(cpm_sum_B_GRCh38.none ~ cpm_sum_B_pangenome, HG00621_24Kb))$r.squared
+
+HG00621_r2_df <- data.frame(
+  sample = c("A", "A", "B", "B"),
+  comparison = c("GRCh38 gencode", "GRCh38 none", "GRCh38 gencode", "GRCh38 none"),
+  r2 = c(HG00621_r2_A_GRCh38.gencode, HG00621_r2_A_GRCh38.none, HG00621_r2_B_GRCh38.gencode, HG00621_r2_B_GRCh38.none)
+)
+
+print(HG00621_r2_df)
+```
+
+```{r plot comparison - HG00621, include=TRUE}
+# Plot comparison and R^2
+ggplot(HG00621_24Kb, aes(x=cpm_sum_A_GRCh38.gencode+1,y=cpm_sum_A_pangenome+1))+
+  geom_point(size=1, alpha=0.15, stroke=0)+
+  geom_abline(intercept = 0, slope = 1, color = "red")+
+  labs(x = "GRCh38 gencode", y = "Pangenome")+
+  ggtitle("HG00621 A")+
+  CS.THEME+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "none")+
+  scale_x_continuous(trans = "log10", labels = scales::comma)+
+  scale_y_continuous(trans = "log10", labels = scales::comma)+
+  annotate("text", x = 10, y = 10000, 
+           label = bquote(R^2 == .(round(summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG00621_24Kb))$r.squared, 3))), 
+           size = 5, color = "black")
+```
+
+```{r Calculate positional normalized difference between pangenome and GRCh38 gencode - HG00621}
+HG00621_24Kb$diff_A_Pangenome_GRCh38.gencode <- (HG00621_24Kb$cpm_sum_A_GRCh38.gencode - HG00621_24Kb$cpm_sum_A_pangenome)/((HG00621_24Kb$cpm_sum_A_GRCh38.gencode + HG00621_24Kb$cpm_sum_A_pangenome)/2)
+HG00621_24Kb$diff_B_Pangenome_GRCh38.gencode <- (HG00621_24Kb$cpm_sum_B_GRCh38.gencode - HG00621_24Kb$cpm_sum_B_pangenome)/((HG00621_24Kb$cpm_sum_B_GRCh38.gencode + HG00621_24Kb$cpm_sum_B_pangenome)/2)
+```
+
+```{r plot positional difference - HG00621, include=TRUE, fig.width=24, fig.height=24}
+# Plot positional difference
+ggplot(HG00621_24Kb, aes(x = interval/1000000, y = diff_A_Pangenome_GRCh38.gencode)) +
+  geom_point(size = 0.75, alpha=0.1, stroke=0) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Intervals with normalized difference in coverage between Pangenome and GRCh38 gencode",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")
+
+```
+
+```{r unload unbinned begraph data - HG00621}
+rm(HG00621_A_GRCh38_gencode, HG00621_A_pangenome, HG00621_A_GRCh38_none, HG00621_B_GRCh38_gencode, HG00621_B_pangenome, HG00621_B_GRCh38_none)
+```
+
+```{r load bedgraph files - HG00741}
+#HG00741
+HG00741_A_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00741_1.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG00741_B_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00741_2.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG00741_A_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00741_replicate_1_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG00741_B_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00741_replicate_2_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG00741_A_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00741_1.GRCh38.NA__align__rep1HG00741-1_genome.bedGraph")
+HG00741_B_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG00741_2.GRCh38.NA__align__rep1HG00741-2_genome.bedGraph")
+```
+
+```{r Convert to dataframe - HG00741}
+# Convert to dataframe
+HG00741_A_GRCh38_gencode<-as.data.frame(HG00741_A_GRCh38_gencode)
+HG00741_A_pangenome<-as.data.frame(HG00741_A_pangenome)
+HG00741_A_GRCh38_none<-as.data.frame(HG00741_A_GRCh38_none)
+HG00741_B_GRCh38_gencode<-as.data.frame(HG00741_B_GRCh38_gencode)
+HG00741_B_pangenome<-as.data.frame(HG00741_B_pangenome)
+HG00741_B_GRCh38_none<-as.data.frame(HG00741_B_GRCh38_none)
+```
+
+```{r Apply sum scores function - HG00741}
+# Apply sum scores function
+HG00741_A_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG00741_A_GRCh38_gencode)
+HG00741_A_pangenome_24Kb <- sum_scores_24Kb(HG00741_A_pangenome)
+HG00741_A_GRCh38_none_24Kb <- sum_scores_24Kb(HG00741_A_GRCh38_none)
+HG00741_B_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG00741_B_GRCh38_gencode)
+HG00741_B_pangenome_24Kb <- sum_scores_24Kb(HG00741_B_pangenome)
+HG00741_B_GRCh38_none_24Kb <- sum_scores_24Kb(HG00741_B_GRCh38_none)
+
+# Convert to dataframes
+HG00741_A_GRCh38_gencode_24Kb<-as.data.frame(HG00741_A_GRCh38_gencode_24Kb)
+HG00741_A_pangenome_24Kb<-as.data.frame(HG00741_A_pangenome_24Kb)
+HG00741_A_GRCh38_none_24Kb<-as.data.frame(HG00741_A_GRCh38_none_24Kb)
+HG00741_B_GRCh38_gencode_24Kb<-as.data.frame(HG00741_B_GRCh38_gencode_24Kb)
+HG00741_B_pangenome_24Kb<-as.data.frame(HG00741_B_pangenome_24Kb)
+HG00741_B_GRCh38_none_24Kb<-as.data.frame(HG00741_B_GRCh38_none_24Kb)
+```
+
+```{r merge dataframes - HG00741}
+# Merge dataframes
+
+# Rename columns to avoid conflicts
+colnames(HG00741_A_GRCh38_gencode_24Kb)[3]<-"score_sum_A_GRCh38.gencode"
+colnames(HG00741_A_pangenome_24Kb)[3]<-"score_sum_A_pangenome"
+colnames(HG00741_A_GRCh38_none_24Kb)[3]<-"score_sum_A_GRCh38.none"
+colnames(HG00741_B_GRCh38_gencode_24Kb)[3]<-"score_sum_B_GRCh38.gencode"
+colnames(HG00741_B_pangenome_24Kb)[3]<-"score_sum_B_pangenome"
+colnames(HG00741_B_GRCh38_none_24Kb)[3]<-"score_sum_B_GRCh38.none"
+
+# Perform the joins after renaming, ensuring each dataset is joined sequentially
+HG00741_24Kb <- HG00741_A_GRCh38_gencode_24Kb %>%
+  left_join(HG00741_A_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG00741_A_GRCh38_none_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG00741_B_GRCh38_gencode_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG00741_B_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG00741_B_GRCh38_none_24Kb, by = c("seqnames", "interval"))
+
+# Normalize by total sum of scores
+HG00741_24Kb$cpm_sum_A_GRCh38.gencode<-HG00741_24Kb$score_sum_A_GRCh38.gencode/(sum(HG00741_A_GRCh38_gencode$score)/1000000)
+HG00741_24Kb$cpm_sum_A_pangenome<-HG00741_24Kb$score_sum_A_pangenome/(sum(HG00741_A_pangenome$score)/1000000)
+HG00741_24Kb$cpm_sum_A_GRCh38.none<-HG00741_24Kb$score_sum_A_GRCh38.none/(sum(HG00741_A_GRCh38_none$score)/1000000)
+HG00741_24Kb$cpm_sum_B_GRCh38.gencode<-HG00741_24Kb$score_sum_B_GRCh38.gencode/(sum(HG00741_B_GRCh38_gencode$score)/1000000)
+HG00741_24Kb$cpm_sum_B_pangenome<-HG00741_24Kb$score_sum_B_pangenome/(sum(HG00741_B_pangenome$score)/1000000)
+HG00741_24Kb$cpm_sum_B_GRCh38.none<-HG00741_24Kb$score_sum_B_GRCh38.none/(sum(HG00741_B_GRCh38_none$score)/1000000)
+```
+
+```{r compare summed coverage - HG00741, include=TRUE}
+# Calculate R^2 for GRCh38 gencode vs pangenome and GRCh38 none
+# Then combine all values into a single dataframe
+HG00741_r2_A_GRCh38.gencode <- summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG00741_24Kb))$r.squared
+HG00741_r2_A_GRCh38.none <- summary(lm(cpm_sum_A_GRCh38.none ~ cpm_sum_A_pangenome, HG00741_24Kb))$r.squared
+HG00741_r2_B_GRCh38.gencode <- summary(lm(cpm_sum_B_GRCh38.gencode ~ cpm_sum_B_pangenome, HG00741_24Kb))$r.squared
+HG00741_r2_B_GRCh38.none <- summary(lm(cpm_sum_B_GRCh38.none ~ cpm_sum_B_pangenome, HG00741_24Kb))$r.squared
+
+HG00741_r2_df <- data.frame(
+  sample = c("A", "A", "B", "B"),
+  comparison = c("GRCh38 gencode", "GRCh38 none", "GRCh38 gencode", "GRCh38 none"),
+  r2 = c(HG00741_r2_A_GRCh38.gencode, HG00741_r2_A_GRCh38.none, HG00741_r2_B_GRCh38.gencode, HG00741_r2_B_GRCh38.none)
+)
+
+print(HG00741_r2_df)
+```
+
+```{r plot comparison - HG00741, include=TRUE}
+# Plot comparison and R^2
+ggplot(HG00741_24Kb, aes(x=cpm_sum_A_GRCh38.gencode+1,y=cpm_sum_A_pangenome+1))+
+  geom_point(size=1, alpha=0.15, stroke=0)+
+  geom_abline(intercept = 0, slope = 1, color = "red")+
+  labs(x = "GRCh38 gencode", y = "Pangenome")+
+  ggtitle("HG00741 A")+
+  CS.THEME+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "none")+
+  scale_x_continuous(trans = "log10", labels = scales::comma)+
+  scale_y_continuous(trans = "log10", labels = scales::comma)+
+  annotate("text", x = 10, y = 10000, 
+           label = bquote(R^2 == .(round(summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG00741_24Kb))$r.squared, 3))), 
+           size = 5, color = "black")
+```
+
+```{r Calculate positional normalized difference between pangenome and GRCh38 gencode - HG00741}
+HG00741_24Kb$diff_A_Pangenome_GRCh38.gencode <- (HG00741_24Kb$cpm_sum_A_GRCh38.gencode - HG00741_24Kb$cpm_sum_A_pangenome)/((HG00741_24Kb$cpm_sum_A_GRCh38.gencode + HG00741_24Kb$cpm_sum_A_pangenome)/2)
+HG00741_24Kb$diff_B_Pangenome_GRCh38.gencode <- (HG00741_24Kb$cpm_sum_B_GRCh38.gencode - HG00741_24Kb$cpm_sum_B_pangenome)/((HG00741_24Kb$cpm_sum_B_GRCh38.gencode + HG00741_24Kb$cpm_sum_B_pangenome)/2)
+```
+
+```{r plot positional difference - HG00741, include=TRUE, fig.width=24, fig.height=24}
+# Plot positional difference
+ggplot(HG00741_24Kb, aes(x = interval/1000000, y = diff_A_Pangenome_GRCh38.gencode)) +
+  geom_point(size = 0.75, alpha=0.1, stroke=0) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Intervals with normalized difference in coverage between Pangenome and GRCh38 gencode",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")
+```
+
+```{r unload unbinned begraph data - HG00741}
+rm(HG00741_A_GRCh38_gencode, HG00741_A_pangenome, HG00741_A_GRCh38_none, HG00741_B_GRCh38_gencode, HG00741_B_pangenome, HG00741_B_GRCh38_none)
+```
+
+```{r load bedgraph files - HG01952}
+#HG01952
+HG01952_A_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01952_1.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG01952_B_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01952_2.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG01952_A_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01952_replicate_1_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG01952_B_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01952_replicate_2_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG01952_A_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01952_1.GRCh38.NA__align__rep1HG01952-1_genome.bedGraph")
+HG01952_B_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01952_2.GRCh38.NA__align__rep1HG01952-2_genome.bedGraph")
+```
+
+```{r Convert to dataframe - HG01952}
+HG01952_A_GRCh38_gencode<-as.data.frame(HG01952_A_GRCh38_gencode)
+HG01952_A_pangenome<-as.data.frame(HG01952_A_pangenome)
+HG01952_A_GRCh38_none<-as.data.frame(HG01952_A_GRCh38_none)
+
+HG01952_B_GRCh38_gencode<-as.data.frame(HG01952_B_GRCh38_gencode)
+HG01952_B_pangenome<-as.data.frame(HG01952_B_pangenome)
+HG01952_B_GRCh38_none<-as.data.frame(HG01952_B_GRCh38_none)
+```
+
+```{r Apply sum scores function - HG01952}
+HG01952_A_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG01952_A_GRCh38_gencode)
+HG01952_A_pangenome_24Kb <- sum_scores_24Kb(HG01952_A_pangenome)
+HG01952_A_GRCh38_none_24Kb <- sum_scores_24Kb(HG01952_A_GRCh38_none)
+
+HG01952_B_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG01952_B_GRCh38_gencode)
+HG01952_B_pangenome_24Kb <- sum_scores_24Kb(HG01952_B_pangenome)
+HG01952_B_GRCh38_none_24Kb <- sum_scores_24Kb(HG01952_B_GRCh38_none)
+
+HG01952_A_GRCh38_gencode_24Kb<-as.data.frame(HG01952_A_GRCh38_gencode_24Kb)
+HG01952_A_pangenome_24Kb<-as.data.frame(HG01952_A_pangenome_24Kb)
+HG01952_A_GRCh38_none_24Kb<-as.data.frame(HG01952_A_GRCh38_none_24Kb)
+
+HG01952_B_GRCh38_gencode_24Kb<-as.data.frame(HG01952_B_GRCh38_gencode_24Kb)
+HG01952_B_pangenome_24Kb<-as.data.frame(HG01952_B_pangenome_24Kb)
+HG01952_B_GRCh38_none_24Kb<-as.data.frame(HG01952_B_GRCh38_none_24Kb)
+```
+
+```{r merge dataframes - HG01952}
+# Merge dataframes
+
+# Rename columns to avoid conflicts
+colnames(HG01952_A_GRCh38_gencode_24Kb)[3]<-"score_sum_A_GRCh38.gencode"
+colnames(HG01952_A_pangenome_24Kb)[3]<-"score_sum_A_pangenome"
+colnames(HG01952_A_GRCh38_none_24Kb)[3]<-"score_sum_A_GRCh38.none"
+colnames(HG01952_B_GRCh38_gencode_24Kb)[3]<-"score_sum_B_GRCh38.gencode"
+colnames(HG01952_B_pangenome_24Kb)[3]<-"score_sum_B_pangenome"
+colnames(HG01952_B_GRCh38_none_24Kb)[3]<-"score_sum_B_GRCh38.none"
+
+# Perform the joins after renaming, ensuring each dataset is joined sequentially
+HG01952_24Kb <- HG01952_A_GRCh38_gencode_24Kb %>%
+  left_join(HG01952_A_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG01952_A_GRCh38_none_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG01952_B_GRCh38_gencode_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG01952_B_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG01952_B_GRCh38_none_24Kb, by = c("seqnames", "interval"))
+
+# Normalize by total sum of scores
+HG01952_24Kb$cpm_sum_A_GRCh38.gencode<-HG01952_24Kb$score_sum_A_GRCh38.gencode/(sum(HG01952_A_GRCh38_gencode$score)/1000000)
+HG01952_24Kb$cpm_sum_A_pangenome<-HG01952_24Kb$score_sum_A_pangenome/(sum(HG01952_A_pangenome$score)/1000000)
+HG01952_24Kb$cpm_sum_A_GRCh38.none<-HG01952_24Kb$score_sum_A_GRCh38.none/(sum(HG01952_A_GRCh38_none$score)/1000000)
+HG01952_24Kb$cpm_sum_B_GRCh38.gencode<-HG01952_24Kb$score_sum_B_GRCh38.gencode/(sum(HG01952_B_GRCh38_gencode$score)/1000000)
+HG01952_24Kb$cpm_sum_B_pangenome<-HG01952_24Kb$score_sum_B_pangenome/(sum(HG01952_B_pangenome$score)/1000000)
+HG01952_24Kb$cpm_sum_B_GRCh38.none<-HG01952_24Kb$score_sum_B_GRCh38.none/(sum(HG01952_B_GRCh38_none$score)/1000000)
+```
+
+```{r compare summed coverage - HG01952, include=TRUE}
+# Calculate R^2 for GRCh38 gencode vs pangenome and GRCh38 none
+# Then combine all values into a single dataframe
+HG01952_r2_A_GRCh38.gencode <- summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG01952_24Kb))$r.squared
+HG01952_r2_A_GRCh38.none <- summary(lm(cpm_sum_A_GRCh38.none ~ cpm_sum_A_pangenome, HG01952_24Kb))$r.squared
+HG01952_r2_B_GRCh38.gencode <- summary(lm(cpm_sum_B_GRCh38.gencode ~ cpm_sum_B_pangenome, HG01952_24Kb))$r.squared
+HG01952_r2_B_GRCh38.none <- summary(lm(cpm_sum_B_GRCh38.none ~ cpm_sum_B_pangenome, HG01952_24Kb))$r.squared
+
+HG01952_r2_df <- data.frame(
+  sample = c("A", "A", "B", "B"),
+  comparison = c("GRCh38 gencode", "GRCh38 none", "GRCh38 gencode", "GRCh38 none"),
+  r2 = c(HG01952_r2_A_GRCh38.gencode, HG01952_r2_A_GRCh38.none, HG01952_r2_B_GRCh38.gencode, HG01952_r2_B_GRCh38.none)
+)
+
+print(HG01952_r2_df)
+```
+
+```{r plot comparison - HG01952, include=TRUE}
+# Plot comparison and R^2
+ggplot(HG01952_24Kb, aes(x=cpm_sum_A_GRCh38.gencode+1,y=cpm_sum_A_pangenome+1))+
+  geom_point(size=1, alpha=0.15, stroke=0)+
+  geom_abline(intercept = 0, slope = 1, color = "red")+
+  labs(x = "GRCh38 gencode", y = "Pangenome")+
+  ggtitle("HG01952 A")+
+  CS.THEME+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "none")+
+  scale_x_continuous(trans = "log10", labels = scales::comma)+
+  scale_y_continuous(trans = "log10", labels = scales::comma)+
+  annotate("text", x = 10, y = 10000, 
+           label = bquote(R^2 == .(round(summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG01952_24Kb))$r.squared, 3))), 
+           size = 5, color = "black")
+```
+
+```{r Calculate positional normalized difference between pangenome and GRCh38 gencode - HG01952}
+HG01952_24Kb$diff_A_Pangenome_GRCh38.gencode <- (HG01952_24Kb$cpm_sum_A_GRCh38.gencode - HG01952_24Kb$cpm_sum_A_pangenome)/((HG01952_24Kb$cpm_sum_A_GRCh38.gencode + HG01952_24Kb$cpm_sum_A_pangenome)/2)
+HG01952_24Kb$diff_B_Pangenome_GRCh38.gencode <- (HG01952_24Kb$cpm_sum_B_GRCh38.gencode - HG01952_24Kb$cpm_sum_B_pangenome)/((HG01952_24Kb$cpm_sum_B_GRCh38.gencode + HG01952_24Kb$cpm_sum_B_pangenome)/2)
+```
+
+```{r plot positional difference - HG01952, include=TRUE, fig.width=24, fig.height=24}
+# Plot positional difference
+ggplot(HG01952_24Kb, aes(x = interval/1000000, y = diff_A_Pangenome_GRCh38.gencode)) +
+  geom_point(size = 0.75, alpha=0.1, stroke=0) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Intervals with normalized difference in coverage between Pangenome and GRCh38 gencode",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")
+```
+
+```{r unload unbinned begraph data - HG01952}
+rm(HG01952_A_GRCh38_gencode, HG01952_A_pangenome, HG01952_A_GRCh38_none, HG01952_B_GRCh38_gencode, HG01952_B_pangenome, HG01952_B_GRCh38_none)
+```
+
+```{r load bedgraph files - HG01978}
+#HG01978
+HG01978_A_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01978_1.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG01978_B_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01978_2.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG01978_A_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01978_replicate_1_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG01978_B_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01978_replicate_2_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG01978_A_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01978_1.GRCh38.NA__align__rep1HG01978-1_genome.bedGraph")
+HG01978_B_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG01978_2.GRCh38.NA__align__rep1HG01978-2_genome.bedGraph")
+```
+
+```{r Convert to dataframe - HG01978}
+HG01978_A_GRCh38_gencode<-as.data.frame(HG01978_A_GRCh38_gencode)
+HG01978_A_pangenome<-as.data.frame(HG01978_A_pangenome)
+HG01978_A_GRCh38_none<-as.data.frame(HG01978_A_GRCh38_none)
+
+HG01978_B_GRCh38_gencode<-as.data.frame(HG01978_B_GRCh38_gencode)
+HG01978_B_pangenome<-as.data.frame(HG01978_B_pangenome)
+HG01978_B_GRCh38_none<-as.data.frame(HG01978_B_GRCh38_none)
+```
+
+```{r Apply sum scores function - HG01978}
+HG01978_A_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG01978_A_GRCh38_gencode)
+HG01978_A_pangenome_24Kb <- sum_scores_24Kb(HG01978_A_pangenome)
+HG01978_A_GRCh38_none_24Kb <- sum_scores_24Kb(HG01978_A_GRCh38_none)
+
+HG01978_B_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG01978_B_GRCh38_gencode)
+HG01978_B_pangenome_24Kb <- sum_scores_24Kb(HG01978_B_pangenome)
+HG01978_B_GRCh38_none_24Kb <- sum_scores_24Kb(HG01978_B_GRCh38_none)
+
+HG01978_A_GRCh38_gencode_24Kb<-as.data.frame(HG01978_A_GRCh38_gencode_24Kb)
+HG01978_A_pangenome_24Kb<-as.data.frame(HG01978_A_pangenome_24Kb)
+HG01978_A_GRCh38_none_24Kb<-as.data.frame(HG01978_A_GRCh38_none_24Kb)
+
+HG01978_B_GRCh38_gencode_24Kb<-as.data.frame(HG01978_B_GRCh38_gencode_24Kb)
+HG01978_B_pangenome_24Kb<-as.data.frame(HG01978_B_pangenome_24Kb)
+HG01978_B_GRCh38_none_24Kb<-as.data.frame(HG01978_B_GRCh38_none_24Kb)
+```
+
+```{r merge dataframes - HG01978}
+# Merge dataframes
+
+# Rename columns to avoid conflicts
+colnames(HG01978_A_GRCh38_gencode_24Kb)[3]<-"score_sum_A_GRCh38.gencode"
+colnames(HG01978_A_pangenome_24Kb)[3]<-"score_sum_A_pangenome"
+colnames(HG01978_A_GRCh38_none_24Kb)[3]<-"score_sum_A_GRCh38.none"
+colnames(HG01978_B_GRCh38_gencode_24Kb)[3]<-"score_sum_B_GRCh38.gencode"
+colnames(HG01978_B_pangenome_24Kb)[3]<-"score_sum_B_pangenome"
+colnames(HG01978_B_GRCh38_none_24Kb)[3]<-"score_sum_B_GRCh38.none"
+
+# Perform the joins after renaming, ensuring each dataset is joined sequentially
+HG01978_24Kb <- HG01978_A_GRCh38_gencode_24Kb %>%
+  left_join(HG01978_A_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG01978_A_GRCh38_none_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG01978_B_GRCh38_gencode_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG01978_B_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG01978_B_GRCh38_none_24Kb, by = c("seqnames", "interval"))
+
+# Normalize by total sum of scores
+HG01978_24Kb$cpm_sum_A_GRCh38.gencode<-HG01978_24Kb$score_sum_A_GRCh38.gencode/(sum(HG01978_A_GRCh38_gencode$score)/1000000)
+HG01978_24Kb$cpm_sum_A_pangenome<-HG01978_24Kb$score_sum_A_pangenome/(sum(HG01978_A_pangenome$score)/1000000)
+HG01978_24Kb$cpm_sum_A_GRCh38.none<-HG01978_24Kb$score_sum_A_GRCh38.none/(sum(HG01978_A_GRCh38_none$score)/1000000)
+HG01978_24Kb$cpm_sum_B_GRCh38.gencode<-HG01978_24Kb$score_sum_B_GRCh38.gencode/(sum(HG01978_B_GRCh38_gencode$score)/1000000)
+HG01978_24Kb$cpm_sum_B_pangenome<-HG01978_24Kb$score_sum_B_pangenome/(sum(HG01978_B_pangenome$score)/1000000)
+HG01978_24Kb$cpm_sum_B_GRCh38.none<-HG01978_24Kb$score_sum_B_GRCh38.none/(sum(HG01978_B_GRCh38_none$score)/1000000)
+```
+
+```{r compare summed coverage - HG01978, include=TRUE}
+# Calculate R^2 for GRCh38 gencode vs pangenome and GRCh38 none
+# Then combine all values into a single dataframe
+HG01978_r2_A_GRCh38.gencode <- summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG01978_24Kb))$r.squared
+HG01978_r2_A_GRCh38.none <- summary(lm(cpm_sum_A_GRCh38.none ~ cpm_sum_A_pangenome, HG01978_24Kb))$r.squared
+HG01978_r2_B_GRCh38.gencode <- summary(lm(cpm_sum_B_GRCh38.gencode ~ cpm_sum_B_pangenome, HG01978_24Kb))$r.squared
+HG01978_r2_B_GRCh38.none <- summary(lm(cpm_sum_B_GRCh38.none ~ cpm_sum_B_pangenome, HG01978_24Kb))$r.squared
+
+HG01978_r2_df <- data.frame(
+  sample = c("A", "A", "B", "B"),
+  comparison = c("GRCh38 gencode", "GRCh38 none", "GRCh38 gencode", "GRCh38 none"),
+  r2 = c(HG01978_r2_A_GRCh38.gencode, HG01978_r2_A_GRCh38.none, HG01978_r2_B_GRCh38.gencode, HG01978_r2_B_GRCh38.none)
+)
+
+print(HG01978_r2_df)
+```
+
+```{r plot comparison - HG01978, include=TRUE}
+# Plot comparison and R^2
+ggplot(HG01978_24Kb, aes(x=cpm_sum_A_GRCh38.gencode+1,y=cpm_sum_A_pangenome+1))+
+  geom_point(size=1, alpha=0.15, stroke=0)+
+  geom_abline(intercept = 0, slope = 1, color = "red")+
+  labs(x = "GRCh38 gencode", y = "Pangenome")+
+  ggtitle("HG01978 A")+
+  CS.THEME+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "none")+
+  scale_x_continuous(trans = "log10", labels = scales::comma)+
+  scale_y_continuous(trans = "log10", labels = scales::comma)+
+  annotate("text", x = 10, y = 10000, 
+           label = bquote(R^2 == .(round(summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG01978_24Kb))$r.squared, 3))), 
+           size = 5, color = "black")
+```
+
+```{r Calculate positional normalized difference between pangenome and GRCh38 gencode - HG01978}
+HG01978_24Kb$diff_A_Pangenome_GRCh38.gencode <- (HG01978_24Kb$cpm_sum_A_GRCh38.gencode - HG01978_24Kb$cpm_sum_A_pangenome)/((HG01978_24Kb$cpm_sum_A_GRCh38.gencode + HG01978_24Kb$cpm_sum_A_pangenome)/2)
+HG01978_24Kb$diff_B_Pangenome_GRCh38.gencode <- (HG01978_24Kb$cpm_sum_B_GRCh38.gencode - HG01978_24Kb$cpm_sum_B_pangenome)/((HG01978_24Kb$cpm_sum_B_GRCh38.gencode + HG01978_24Kb$cpm_sum_B_pangenome)/2)
+```
+
+```{r plot positional difference - HG01978, include=TRUE, fig.width=24, fig.height=24}
+# Plot positional difference
+ggplot(HG01978_24Kb, aes(x = interval/1000000, y = diff_A_Pangenome_GRCh38.gencode)) +
+  geom_point(size = 0.75, alpha=0.1, stroke=0) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Intervals with normalized difference in coverage between Pangenome and GRCh38 gencode",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")
+```
+
+```{r unload unbinned begraph data - HG01978}
+rm(HG01978_A_GRCh38_gencode, HG01978_A_pangenome, HG01978_A_GRCh38_none, HG01978_B_GRCh38_gencode, HG01978_B_pangenome, HG01978_B_GRCh38_none)
+```
+
+```{r load bedgraph files - HG03516}
+#HG03516
+HG03516_A_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG03516_1.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG03516_B_GRCh38_gencode<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG03516_2.GRCh38.gencode_v29__align__rep1PE_unstranded_genome.bedGraph")
+HG03516_A_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG03516_replicate_1_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG03516_B_pangenome<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG03516_replicate_2_vg_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted.bedGraph")
+HG03516_A_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG03516_1.GRCh38.NA__align__rep1HG03516-1_genome.bedGraph")
+HG03516_B_GRCh38_none<-import("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/PangenomeComparisonBedGraphs/Sorted.HG03516_2.GRCh38.NA__align__rep1HG03516-2_genome.bedGraph")
+```
+
+```{r Convert to dataframe - HG03516}
+HG03516_A_GRCh38_gencode<-as.data.frame(HG03516_A_GRCh38_gencode)
+HG03516_A_pangenome<-as.data.frame(HG03516_A_pangenome)
+HG03516_A_GRCh38_none<-as.data.frame(HG03516_A_GRCh38_none)
+
+HG03516_B_GRCh38_gencode<-as.data.frame(HG03516_B_GRCh38_gencode)
+HG03516_B_pangenome<-as.data.frame(HG03516_B_pangenome)
+HG03516_B_GRCh38_none<-as.data.frame(HG03516_B_GRCh38_none)
+```
+
+```{r Apply sum scores function - HG03516}
+HG03516_A_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG03516_A_GRCh38_gencode)
+HG03516_A_pangenome_24Kb <- sum_scores_24Kb(HG03516_A_pangenome)
+HG03516_A_GRCh38_none_24Kb <- sum_scores_24Kb(HG03516_A_GRCh38_none)
+
+HG03516_B_GRCh38_gencode_24Kb <- sum_scores_24Kb(HG03516_B_GRCh38_gencode)
+HG03516_B_pangenome_24Kb <- sum_scores_24Kb(HG03516_B_pangenome)
+HG03516_B_GRCh38_none_24Kb <- sum_scores_24Kb(HG03516_B_GRCh38_none)
+
+HG03516_A_GRCh38_gencode_24Kb<-as.data.frame(HG03516_A_GRCh38_gencode_24Kb)
+HG03516_A_pangenome_24Kb<-as.data.frame(HG03516_A_pangenome_24Kb)
+HG03516_A_GRCh38_none_24Kb<-as.data.frame(HG03516_A_GRCh38_none_24Kb)
+
+HG03516_B_GRCh38_gencode_24Kb<-as.data.frame(HG03516_B_GRCh38_gencode_24Kb)
+HG03516_B_pangenome_24Kb<-as.data.frame(HG03516_B_pangenome_24Kb)
+HG03516_B_GRCh38_none_24Kb<-as.data.frame(HG03516_B_GRCh38_none_24Kb)
+```
+
+```{r merge dataframes - HG03516}
+# Merge dataframes
+
+# Rename columns to avoid conflicts
+colnames(HG03516_A_GRCh38_gencode_24Kb)[3]<-"score_sum_A_GRCh38.gencode"
+colnames(HG03516_A_pangenome_24Kb)[3]<-"score_sum_A_pangenome"
+colnames(HG03516_A_GRCh38_none_24Kb)[3]<-"score_sum_A_GRCh38.none"
+colnames(HG03516_B_GRCh38_gencode_24Kb)[3]<-"score_sum_B_GRCh38.gencode"
+colnames(HG03516_B_pangenome_24Kb)[3]<-"score_sum_B_pangenome"
+colnames(HG03516_B_GRCh38_none_24Kb)[3]<-"score_sum_B_GRCh38.none"
+
+# Perform the joins after renaming, ensuring each dataset is joined sequentially
+HG03516_24Kb <- HG03516_A_GRCh38_gencode_24Kb %>%
+  left_join(HG03516_A_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG03516_A_GRCh38_none_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG03516_B_GRCh38_gencode_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG03516_B_pangenome_24Kb, by = c("seqnames", "interval")) %>%
+  left_join(HG03516_B_GRCh38_none_24Kb, by = c("seqnames", "interval"))
+
+# Normalize by total sum of scores
+HG03516_24Kb$cpm_sum_A_GRCh38.gencode<-HG03516_24Kb$score_sum_A_GRCh38.gencode/(sum(HG03516_A_GRCh38_gencode$score)/1000000)
+HG03516_24Kb$cpm_sum_A_pangenome<-HG03516_24Kb$score_sum_A_pangenome/(sum(HG03516_A_pangenome$score)/1000000)
+HG03516_24Kb$cpm_sum_A_GRCh38.none<-HG03516_24Kb$score_sum_A_GRCh38.none/(sum(HG03516_A_GRCh38_none$score)/1000000)
+HG03516_24Kb$cpm_sum_B_GRCh38.gencode<-HG03516_24Kb$score_sum_B_GRCh38.gencode/(sum(HG03516_B_GRCh38_gencode$score)/1000000)
+HG03516_24Kb$cpm_sum_B_pangenome<-HG03516_24Kb$score_sum_B_pangenome/(sum(HG03516_B_pangenome$score)/1000000)
+HG03516_24Kb$cpm_sum_B_GRCh38.none<-HG03516_24Kb$score_sum_B_GRCh38.none/(sum(HG03516_B_GRCh38_none$score)/1000000)
+```
+
+```{r compare summed coverage - HG03516, include=TRUE}
+# Calculate R^2 for GRCh38 gencode vs pangenome and GRCh38 none
+# Then combine all values into a single dataframe
+HG03516_r2_A_GRCh38.gencode <- summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG03516_24Kb))$r.squared
+HG03516_r2_A_GRCh38.none <- summary(lm(cpm_sum_A_GRCh38.none ~ cpm_sum_A_pangenome, HG03516_24Kb))$r.squared
+HG03516_r2_B_GRCh38.gencode <- summary(lm(cpm_sum_B_GRCh38.gencode ~ cpm_sum_B_pangenome, HG03516_24Kb))$r.squared
+HG03516_r2_B_GRCh38.none <- summary(lm(cpm_sum_B_GRCh38.none ~ cpm_sum_B_pangenome, HG03516_24Kb))$r.squared
+
+HG03516_r2_df <- data.frame(
+  sample = c("A", "A", "B", "B"),
+  comparison = c("GRCh38 gencode", "GRCh38 none", "GRCh38 gencode", "GRCh38 none"),
+  r2 = c(HG03516_r2_A_GRCh38.gencode, HG03516_r2_A_GRCh38.none, HG03516_r2_B_GRCh38.gencode, HG03516_r2_B_GRCh38.none)
+)
+
+print(HG03516_r2_df)
+```
+
+```{r plot comparison - HG03516, include=TRUE}
+# Plot comparison and R^2
+ggplot(HG03516_24Kb, aes(x=cpm_sum_A_GRCh38.gencode+1,y=cpm_sum_A_pangenome+1))+
+  geom_point(size=1, alpha=0.15, stroke=0)+
+  geom_abline(intercept = 0, slope = 1, color = "red")+
+  labs(x = "GRCh38 gencode", y = "Pangenome")+
+  ggtitle("HG03516 A")+
+  CS.THEME+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "none")+
+  scale_x_continuous(trans = "log10", labels = scales::comma)+
+  scale_y_continuous(trans = "log10", labels = scales::comma)+
+  annotate("text", x = 10, y = 10000, 
+           label = bquote(R^2 == .(round(summary(lm(cpm_sum_A_GRCh38.gencode ~ cpm_sum_A_pangenome, HG03516_24Kb))$r.squared, 3))), 
+           size = 5, color = "black")
+```
+
+```{r Calculate positional normalized difference between pangenome and GRCh38 gencode - HG03516}
+HG03516_24Kb$diff_A_Pangenome_GRCh38.gencode <- (HG03516_24Kb$cpm_sum_A_GRCh38.gencode - HG03516_24Kb$cpm_sum_A_pangenome)/((HG03516_24Kb$cpm_sum_A_GRCh38.gencode + HG03516_24Kb$cpm_sum_A_pangenome)/2)
+HG03516_24Kb$diff_B_Pangenome_GRCh38.gencode <- (HG03516_24Kb$cpm_sum_B_GRCh38.gencode - HG03516_24Kb$cpm_sum_B_pangenome)/((HG03516_24Kb$cpm_sum_B_GRCh38.gencode + HG03516_24Kb$cpm_sum_B_pangenome)/2)
+```
+
+```{r plot positional difference - HG03516, include=TRUE, fig.width=24, fig.height=24}
+# Plot positional difference
+ggplot(HG03516_24Kb, aes(x = interval/1000000, y = diff_A_Pangenome_GRCh38.gencode)) +
+  geom_point(size = 0.75, alpha=0.1, stroke=0) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Intervals with normalized difference in coverage between Pangenome and GRCh38 gencode",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")
+```
+
+```{r unload unbinned begraph data - HG03516}
+rm(HG03516_A_GRCh38_gencode, HG03516_A_pangenome, HG03516_A_GRCh38_none, HG03516_B_GRCh38_gencode, HG03516_B_pangenome, HG03516_B_GRCh38_none)
+```

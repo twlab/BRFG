@@ -1,0 +1,774 @@
+---
+title: "Enrichment of genes with genome choice effect in regions with elevated variation"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/")
+rm(list = ls())
+set.seed(0)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+
+require("ggplot2")
+require("cowplot")
+require("viridis")
+require("reshape2")
+require("dplyr")
+require("tidyverse")
+
+theme_set(theme_cowplot())
+```
+
+```{r read in gene list}
+GeneList.Wide <- read.delim("GeneSetComparisonTable.txt", header = TRUE, sep = "\t")
+
+colnames(GeneList.Wide)[5]<-"RNAseqGenome"
+colnames(GeneList.Wide)[6]<-"RNAseqGenomeXSample"
+```
+
+```{r Test for enrichment of Var regions overlapping genome choice regions}
+# Fraction of all genes showing genome choice effect
+N.Genes<-58735
+N.GenesProximalToGenomeChoiceEffects<-length(unique(sort(GeneList.Wide$Gene)))
+FractionOfGeneChoiceGenes_All<-N.GenesProximalToGenomeChoiceEffects/N.Genes
+print("Fraction of all genes showing genome choice effect")
+FractionOfGeneChoiceGenes_All
+
+# Fraction of all 24Kb regions enriched for SVs
+AllSVtests<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/24Kb_Regions_Enriched_in_SV_AllData.txt",header = TRUE)
+N.SV<-nrow(subset(AllSVtests, Significant==TRUE))
+N.Total<-nrow(AllSVtests)
+FractionOfGenomeEnrichedForSVs<-N.SV/N.Total
+print("Fraction of all 24Kb regions enriched for SVs")
+FractionOfGenomeEnrichedForSVs
+
+# Fraction of all 24Kb regions enriched for SNPs
+AllSNPtests<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/24kb_Regions_Enriched_in_SNP_PASS_AllData.txt",header = TRUE)
+N.SNP<-nrow(subset(AllSNPtests, Significant==TRUE))
+N.Total<-nrow(AllSNPtests)
+FractionOfGenomeEnrichedForSNPs<-N.SNP/N.Total
+print("Fraction of all 24Kb regions enriched for SNPs")
+FractionOfGenomeEnrichedForSNPs
+
+# Fraction of all 24Kb regions enriched for INDELs
+AllINDELtests<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/24kb_Regions_Enriched_in_Indel_PASS_AllData.txt",header = TRUE)
+N.INDEL<-nrow(subset(AllINDELtests, Significant==TRUE))
+N.Total<-nrow(AllINDELtests)
+FractionOfGenomeEnrichedForINDELs<-N.INDEL/N.Total
+print("Fraction of all 24Kb regions enriched for Indels")
+FractionOfGenomeEnrichedForINDELs
+
+# Fraction of all 24Kb regions enriched for SNPs Refcall
+AllSNPtests.Ref<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/24kb_Regions_Enriched_in_SNP_RefCall_AllData.txt",header = TRUE)
+N.SNP.Ref<-nrow(subset(AllSNPtests.Ref, Significant==TRUE))
+N.Total<-nrow(AllSNPtests.Ref)
+FractionOfGenomeEnrichedForSNPs.Ref<-N.SNP.Ref/N.Total
+print("Fraction of all 24Kb regions enriched for SNPs Ref")
+FractionOfGenomeEnrichedForSNPs.Ref
+
+# Fraction of all 24Kb regions enriched for INDELs Refcall
+AllINDELtests.Ref<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/24kb_Regions_Enriched_in_Indel_RefCall_AllData.txt",header = TRUE)
+N.INDEL.Ref<-nrow(subset(AllINDELtests.Ref, Significant==TRUE))
+N.Total<-nrow(AllINDELtests.Ref)
+FractionOfGenomeEnrichedForINDELs.Ref<-N.INDEL.Ref/N.Total
+print("Fraction of all 24Kb regions enriched for Indels Ref")
+FractionOfGenomeEnrichedForINDELs.Ref
+```
+```{r Calculate the mean number of SVs per 24Kb region}
+AllSVtests$Significant[AllSVtests$Significant==TRUE]<-"Significant"
+AllSVtests$Significant[AllSVtests$Significant==FALSE]<-"Not Significant"
+
+AllSNPtests$Significant[AllSNPtests$Significant==TRUE]<-"Significant"
+AllSNPtests$Significant[AllSNPtests$Significant==FALSE]<-"Not Significant"
+
+AllSNPtests.Ref$Significant[AllSNPtests.Ref$Significant==TRUE]<-"Significant"
+AllSNPtests.Ref$Significant[AllSNPtests.Ref$Significant==FALSE]<-"Not Significant"
+
+AllINDELtests$Significant[AllINDELtests$Significant==TRUE]<-"Significant"
+AllINDELtests$Significant[AllINDELtests$Significant==FALSE]<-"Not Significant"
+
+AllINDELtests.Ref$Significant[AllINDELtests.Ref$Significant==TRUE]<-"Significant"
+AllINDELtests.Ref$Significant[AllINDELtests.Ref$Significant==FALSE]<-"Not Significant"
+
+MeanCount.Sig.SV<-mean(subset(AllSVtests, Significant == "Significant")$Count)
+MeanCount.NotSig.SV<-mean(subset(AllSVtests, Significant == "Not Significant")$Count)
+
+print("Ratio of mean number of SVs per 24Kb region in significant vs non-significant regions")
+MeanCount.Sig.SV/MeanCount.NotSig.SV
+```
+
+```{r Generate plot of number of SVs per 24Kb region, include=FALSE}
+SVCountBySignPlot<-ggplot(AllSVtests, aes(x=Count+1, fill=Significant))+
+  geom_histogram(bins = 60, alpha=0.75)+
+  scale_x_continuous(trans = "sqrt", limits = c(-5,round(max(AllSVtests$Count)*1.05)), expand = c(0,0))+
+  CS.THEME+
+  scale_fill_viridis_d(option = "cividis", end = 0.8)+
+  scale_y_continuous(limits = c(0,80000), expand = c(0,0), labels = scales::label_number(scale = 1/1000))+
+  ylab("Number (K) of 24Kb regions")+
+  xlab("Number of SVs per 24Kb region")+
+  ggtitle("Structural Variant Enrichment")+
+  theme(legend.position = "none", axis.title.y = element_text(vjust = -1))+
+  facet_grid(Significant~.)+
+  geom_vline(xintercept = MeanCount.Sig.SV, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[2])+
+  geom_vline(xintercept = MeanCount.NotSig.SV, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[1])
+```
+
+```{r plot the number of SVs per 24Kb region, include=TRUE, fig.width=8, fig.height=6}
+SVCountBySignPlot
+```
+
+```{r Calculate the mean number of SNPs per 24Kb region, include=TRUE}
+MeanCount.Sig.SNP<-mean(subset(AllSNPtests, Significant == "Significant")$Count)
+MeanCount.NotSig.SNP<-mean(subset(AllSNPtests, Significant == "Not Significant")$Count)
+print("Ratio of mean number of SNPs per 24Kb region in significant vs non-significant regions")
+MeanCount.Sig.SNP/MeanCount.NotSig.SNP
+```
+
+```{r Generate plot of number of SNPs per 24Kb region, include=FALSE}
+SNPCountBySignPlot<-ggplot(AllSNPtests, aes(x=Count+1, fill=Significant))+
+  geom_histogram(bins = 60, alpha=0.75)+
+  scale_x_continuous(trans = "sqrt", limits = c(-5,round(max(AllSNPtests$Count)*1.05)), expand = c(0,0))+
+  CS.THEME+
+  scale_fill_viridis_d(option = "cividis", end = 0.8)+
+  scale_y_continuous(limits = c(0,50000), expand = c(0,0), labels = scales::label_number(scale = 1/1000))+
+  ylab("Number (K) of 24Kb regions")+
+  xlab("Number of SNPs per 24Kb region")+
+  ggtitle("Single Nucleotide Variant Enrichment")+
+  theme(legend.position = "none", axis.title.y = element_text(vjust = -1))+
+  facet_grid(Significant~.)+
+  geom_vline(xintercept = MeanCount.Sig.SNP, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[2])+
+  geom_vline(xintercept = MeanCount.NotSig.SNP, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[1])
+```
+
+```{r plot the number of SNPs per 24Kb region, include=TRUE, fig.width=8, fig.height=6}
+SNPCountBySignPlot
+```
+
+```{r Calculate the mean number of SNPs per 24Kb region Ref, include=TRUE}
+MeanCount.Sig.SNP.Ref<-mean(subset(AllSNPtests.Ref, Significant == "Significant")$Count)
+MeanCount.NotSig.SNP.Ref<-mean(subset(AllSNPtests.Ref, Significant == "Not Significant")$Count)
+print("Ratio of mean number of SNPs per 24Kb region in significant vs non-significant regions Ref")
+MeanCount.Sig.SNP.Ref/MeanCount.NotSig.SNP.Ref
+```
+
+```{r Generate plot of number of SNPs per 24Kb region Ref, include=FALSE}
+SNPCountBySignPlot.Ref<-ggplot(AllSNPtests.Ref, aes(x=Count+1, fill=Significant))+
+  geom_histogram(bins = 60, alpha=0.75)+
+  scale_x_continuous(trans = "sqrt", limits = c(-5,round(max(AllSNPtests$Count, na.rm = TRUE)*1.05)), expand = c(0,0))+
+  CS.THEME+
+  scale_fill_viridis_d(option = "cividis", end = 0.8)+
+  scale_y_continuous(limits = c(0,65000), expand = c(0,0), labels = scales::label_number(scale = 1/1000))+
+  ylab("Number (K) of 24Kb regions")+
+  xlab("Number of SNPs per 24Kb region")+
+  ggtitle("Single Nucleotide Variant Enrichment Ref")+
+  theme(legend.position = "none", axis.title.y = element_text(vjust = -1))+
+  facet_grid(Significant~.)+
+  geom_vline(xintercept = MeanCount.Sig.SNP.Ref, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[2])+
+  geom_vline(xintercept = MeanCount.NotSig.SNP.Ref, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[1])
+```
+
+```{r plot the number of SNPs per 24Kb region Ref, include=TRUE, fig.width=8, fig.height=6}
+SNPCountBySignPlot.Ref
+```
+
+```{r Calculate the mean number of INDELs per 24Kb region, include=TRUE}
+MeanCount.Sig.INDEL<-mean(subset(AllINDELtests, Significant == "Significant")$Count)
+MeanCount.NotSig.INDEL<-mean(subset(AllINDELtests, Significant == "Not Significant")$Count)
+print("Ratio of mean number of INDELs per 24Kb region in significant vs non-significant regions")
+MeanCount.Sig.INDEL/MeanCount.NotSig.INDEL
+```
+
+```{r Generate plot of number of INDELs per 24Kb region, include=FALSE}
+# Plot the number of INDELs per 24Kb region
+INDELCountBySignPlot<-ggplot(AllINDELtests, aes(x=Count+1, fill=Significant))+
+  geom_histogram(bins = 60, alpha=0.75)+
+  scale_x_continuous(trans = "sqrt", limits = c(-5,round(max(AllINDELtests$Count)*1.05)), expand = c(0,0))+
+  CS.THEME+
+  scale_fill_viridis_d(option = "cividis", end = 0.8)+
+  scale_y_continuous(limits = c(0,15000), expand = c(0,0), labels = scales::label_number(scale = 1/1000))+
+  ylab("Number (K) of 24Kb regions")+
+  xlab("Number of INDELs per 24Kb region")+
+  ggtitle("Insertion/Deletion Enrichment")+
+  theme(legend.position = "none")+
+  facet_grid(Significant~.)+
+  geom_vline(xintercept = MeanCount.Sig.INDEL, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[2])+
+  geom_vline(xintercept = MeanCount.NotSig.INDEL, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[1])
+```
+
+```{r plot the number of INDELs per 24Kb region, include=TRUE, fig.width=8, fig.height=6}
+INDELCountBySignPlot
+```
+```{r Calculate the mean number of INDELs per 24Kb region Ref, include=TRUE}
+MeanCount.Sig.INDEL.Ref<-mean(subset(AllINDELtests.Ref, Significant == "Significant")$Count)
+MeanCount.NotSig.INDEL.Ref<-mean(subset(AllINDELtests.Ref, Significant == "Not Significant")$Count)
+print("Ratio of mean number of INDELs per 24Kb region in significant vs non-significant regions Ref")
+MeanCount.Sig.INDEL.Ref/MeanCount.NotSig.INDEL.Ref
+```
+
+```{r Generate plot of number of INDELs per 24Kb region Ref, include=FALSE}
+# Plot the number of INDELs per 24Kb region Ref
+INDELCountBySignPlot.Ref<-ggplot(AllINDELtests.Ref, aes(x=Count+1, fill=Significant))+
+  geom_histogram(bins = 60, alpha=0.75)+
+  scale_x_continuous(trans = "sqrt", limits = c(-5,round(max(AllINDELtests.Ref$Count)*1.05)), expand = c(0,0))+
+  CS.THEME+
+  scale_fill_viridis_d(option = "cividis", end = 0.8)+
+  scale_y_continuous(limits = c(0,45000), expand = c(0,0), labels = scales::label_number(scale = 1/1000))+
+  ylab("Number (K) of 24Kb regions")+
+  xlab("Number of INDELs per 24Kb region")+
+  ggtitle("Insertion/Deletion Enrichment Ref")+
+  theme(legend.position = "none")+
+  facet_grid(Significant~.)+
+  geom_vline(xintercept = MeanCount.Sig.INDEL.Ref, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[2])+
+  geom_vline(xintercept = MeanCount.NotSig.INDEL.Ref, linetype="dashed", color = viridis(2,option="cividis", end = 0.8)[1])
+```
+
+```{r plot the number of INDELs per 24Kb region Ref, include=TRUE, fig.width=8, fig.height=6}
+INDELCountBySignPlot.Ref
+```
+
+```{r combine count by significance plots, include=TRUE, include=FALSE}
+CountBySignificancePanel<-plot_grid(SVCountBySignPlot,SNPCountBySignPlot,SNPCountBySignPlot.Ref,INDELCountBySignPlot, INDELCountBySignPlot.Ref, ncol = 2, nrow = 3, labels = c("A","B","C"), label_size = 14)
+
+ggsave(filename = "VarsEnrichmentCounts_Panels.png",plot = CountBySignificancePanel,units = "in", width = 6.5, height = 12)
+```
+
+```{r plot combined count by significance plots ,fig.width=13, fig.height=12}
+CountBySignificancePanel
+```
+
+```{r calculate the fraction of all genes in enriched regions, include=TRUE}
+# Fraction of all genes in in SNP enriched regions
+N.TotalGenesInSNPEnrichedRegions<-8900
+FractionAllGenesInSNP<-N.TotalGenesInSNPEnrichedRegions/N.Genes
+print("Fraction of all genes in in SNP enriched regions")
+FractionAllGenesInSNP
+
+# Fraction of all genes in in SNP enriched regions
+N.TotalGenesInINDELEnrichedRegions<-17717
+FractionAllGenesInINDEL<-N.TotalGenesInINDELEnrichedRegions/N.Genes
+print("Fraction of all genes in in INDEL enriched regions")
+FractionAllGenesInINDEL
+
+# Fraction of all genes in SV enriched regions
+N.TotalGenesInSVEnrichedRegions<-10401
+FractionAllGenesInSV<-N.TotalGenesInSVEnrichedRegions/N.Genes
+print("Fraction of all genes in in SV enriched regions")
+FractionAllGenesInSV
+```
+
+```{r calculate the fraction of genome choice genes in enriched regions, include=TRUE}
+# Fraction of Genome choice affected genes in SV enriched regions for any technology
+N.SV.All<-nrow(subset(GeneList.Wide, SV == TRUE))
+N.Total.All<-nrow(GeneList.Wide)
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForSVs<-N.SV.All/N.Total.All
+print("Fraction of Genome choice affected genes in SV enriched regions for any technology")
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForSVs
+
+# Fraction of Genome choice affected genes in INDEL enriched regions for any technology
+N.INDEL.All<-nrow(subset(GeneList.Wide, Indel.PASS == TRUE | Indel.RefCall == TRUE))
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForINDELs<-N.INDEL.All/N.Total.All
+print("Fraction of Genome choice affected genes in INDEL enriched regions for any technology")
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForINDELs
+
+# Fraction of Genome choice affected genes in SNP enriched regions for any technology
+N.SNP.All<-nrow(subset(GeneList.Wide, SNP.PASS == TRUE | SNP.RefCall == TRUE))
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForSNPs<-N.SNP.All/N.Total.All
+print("Fraction of Genome choice affected genes in SNP enriched regions for any technology")
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForSNPs
+```
+
+```{r calculate more fractions, include=TRUE}
+# Fraction of Genome choice affected genes in SV enriched regions for ATACseq
+N.SV.ATACseq<-nrow(subset(GeneList.Wide, ATACseq==TRUE & SV == TRUE))
+N.Total.ATACseq<-nrow(subset(GeneList.Wide, ATACseq==TRUE))
+FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForSVs<-N.SV.ATACseq/N.Total.ATACseq
+FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForSVs
+
+# Fraction of Genome choice affected genes in INDEL enriched regions for ATACseq
+N.INDEL.ATACseq<-nrow(subset(GeneList.Wide, ATACseq==TRUE & (Indel.PASS == TRUE | Indel.RefCall==TRUE)))
+N.Total.ATACseq<-nrow(subset(GeneList.Wide, ATACseq==TRUE))
+FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForINDELs<-N.INDEL.ATACseq/N.Total.ATACseq
+FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForINDELs
+
+# Fraction of Genome choice affected genes in SNP enriched regions for ATACseq
+N.SNP.ATACseq<-nrow(subset(GeneList.Wide, ATACseq==TRUE & (SNP.PASS == TRUE | SNP.RefCall == TRUE)))
+N.Total.ATACseq<-nrow(subset(GeneList.Wide, ATACseq==TRUE))
+FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForSNPs<-N.SNP.ATACseq/N.Total.ATACseq
+FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForSNPs
+
+# Fraction of all genes showing genome choice effect in ATACseq
+FractionGeneomeChoice.ATACseq<-N.Total.ATACseq/N.Genes
+FractionGeneomeChoice.ATACseq
+
+# Fraction of Genome choice affected genes in SV enriched regions for RNAseqGenome
+N.SV.RNAseqGenome<-nrow(subset(GeneList.Wide, RNAseqGenome==TRUE & SV == TRUE))
+N.Total.RNAseqGenome<-nrow(subset(GeneList.Wide, RNAseqGenome==TRUE))
+FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForSVs<-N.SV.RNAseqGenome/N.Total.RNAseqGenome
+FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForSVs
+
+# Fraction of Genome choice affected genes in INDEL enriched regions for RNAseqGenome
+N.INDEL.RNAseqGenome<-nrow(subset(GeneList.Wide, RNAseqGenome==TRUE & (Indel.PASS == TRUE | Indel.RefCall==TRUE) ))
+N.Total.RNAseqGenome<-nrow(subset(GeneList.Wide, RNAseqGenome==TRUE))
+FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForINDELs<-N.INDEL.RNAseqGenome/N.Total.RNAseqGenome
+FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForINDELs
+
+# Fraction of Genome choice affected genes in SNP enriched regions for RNAseqGenome
+N.SNP.RNAseqGenome<-nrow(subset(GeneList.Wide, RNAseqGenome==TRUE & (SNP.PASS == TRUE | SNP.RefCall == TRUE) ))
+N.Total.RNAseqGenome<-nrow(subset(GeneList.Wide, RNAseqGenome==TRUE))
+FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForSNPs<-N.SNP.RNAseqGenome/N.Total.RNAseqGenome
+FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForSNPs
+
+# Fraction of all genes showing genome choice effect in RNAseqGenome
+FractionGeneomeChoice.RNAseqGenome<-N.Total.RNAseqGenome/N.Genes
+
+
+# Fraction of Genome choice affected genes in SV enriched regions for RNAseqGenomeXSample
+N.SV.RNAseqGenomeXSample<-nrow(subset(GeneList.Wide, RNAseqGenomeXSample==TRUE & SV == TRUE))
+N.Total.RNAseqGenomeXSample<-nrow(subset(GeneList.Wide, RNAseqGenomeXSample==TRUE))
+FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForSVs<-N.SV.RNAseqGenomeXSample/N.Total.RNAseqGenomeXSample
+FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForSVs
+
+# Fraction of Genome choice affected genes in INDEL enriched regions for RNAseqGenomeXSample
+N.INDEL.RNAseqGenomeXSample<-nrow(subset(GeneList.Wide, RNAseqGenomeXSample==TRUE & (Indel.PASS == TRUE | Indel.RefCall==TRUE)))
+N.Total.RNAseqGenomeXSample<-nrow(subset(GeneList.Wide, RNAseqGenomeXSample==TRUE))
+FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForINDELs<-N.INDEL.RNAseqGenomeXSample/N.Total.RNAseqGenomeXSample
+FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForINDELs
+
+# Fraction of Genome choice affected genes in SNP enriched regions for RNAseqGenomeXSample
+N.SNP.RNAseqGenomeXSample<-nrow(subset(GeneList.Wide, RNAseqGenomeXSample==TRUE & (SNP.PASS == TRUE | SNP.RefCall == TRUE)))
+N.Total.RNAseqGenomeXSample<-nrow(subset(GeneList.Wide, RNAseqGenomeXSample==TRUE))
+FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForSNPs<-N.SNP.RNAseqGenomeXSample/N.Total.RNAseqGenomeXSample
+FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForSNPs
+
+# Fraction of all genes showing genome choice effect in RNAseqGenomeXSample
+FractionGeneomeChoice.RNAseqGenomeXSample<-N.Total.RNAseqGenomeXSample/N.Genes
+
+
+# Fraction of Genome choice affected genes in SV enriched regions for WGBS
+N.SV.WGBS<-nrow(subset(GeneList.Wide, WGBS==TRUE & SV == TRUE))
+N.Total.WGBS<-nrow(subset(GeneList.Wide, WGBS==TRUE))
+FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForSVs<-N.SV.WGBS/N.Total.WGBS
+FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForSVs
+
+# Fraction of Genome choice affected genes in INDEL enriched regions for WGBS
+N.INDEL.WGBS<-nrow(subset(GeneList.Wide, WGBS==TRUE & (Indel.PASS == TRUE | Indel.RefCall==TRUE)))
+N.Total.WGBS<-nrow(subset(GeneList.Wide, WGBS==TRUE))
+FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForINDELs<-N.INDEL.WGBS/N.Total.WGBS
+FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForINDELs
+
+# Fraction of Genome choice affected genes in SNP enriched regions for WGBS
+N.SNP.WGBS<-nrow(subset(GeneList.Wide, WGBS==TRUE & (SNP.PASS == TRUE | SNP.RefCall == TRUE)))
+N.Total.WGBS<-nrow(subset(GeneList.Wide, WGBS==TRUE))
+FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForSNPs<-N.SNP.WGBS/N.Total.WGBS
+FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForSNPs
+
+# Fraction of all genes showing genome choice effect in WGBS
+FractionGeneomeChoice.WGBS<-N.Total.WGBS/N.Genes
+```
+
+```{r report fractions, include=TRUE}
+# Fraction of all genes showing genome choice effect
+FractionOfGeneChoiceGenes_All
+
+# Fraction of all genes in SV enriched regions
+FractionAllGenesInSV
+
+# Fraction of all genes in in INDEL enriched regions
+FractionAllGenesInINDEL
+
+# Fraction of all genes in in SNP enriched regions
+FractionAllGenesInSNP
+
+# Fraction of all genes showing genome choice effect in ATACseq
+FractionGeneomeChoice.ATACseq
+
+# Fraction of all genes showing genome choice effect in RNAseqGenome
+FractionGeneomeChoice.RNAseqGenome
+
+# Fraction of all genes showing genome choice effect in RNAseqGenomeXSample
+FractionGeneomeChoice.RNAseqGenomeXSample
+
+# Fraction of all genes showing genome choice effect in WGBS
+FractionGeneomeChoice.WGBS
+
+
+
+
+# Fraction of Genome choice affected genes in SV enriched regions for any technology
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForSVs
+
+# Fraction of Genome choice affected genes in INDEL enriched regions for any technology
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForINDELs
+
+# Fraction of Genome choice affected genes in SNP enriched regions for any technology
+FractionOfGeneChoiceGenes_All_InRegionsEnrichedForSNPs
+```
+```{r combine fractions and save to file}
+## Plot everything together
+EnrichmentFractions<-data.frame(
+  Class=c("SV","SV","SV","SV","SV","INDEL","SNP","INDEL","SNP","INDEL","SNP","INDEL","SNP","INDEL","SNP","All genes","SV","INDEL","SNP","All genes","All genes","All genes","All genes","SV","INDEL","SNP"),
+  Group=c(
+    "All Genome bins",
+    "Genome choice effected\nATACseq",
+    "Genome choice effected\nRNAseqGenome",
+    "Genome choice effected\nRNAseqGenomeXSample",
+    "Genome choice effected\nWGBS",
+    "All Genome bins",
+    "All Genome bins",
+    "Genome choice effected\nATACseq",
+    "Genome choice effected\nATACseq",
+    "Genome choice effected\nRNAseqGenome",
+    "Genome choice effected\nRNAseqGenome",
+    "Genome choice effected\nRNAseqGenomeXSample",
+    "Genome choice effected\nRNAseqGenomeXSample",
+    "Genome choice effected\nWGBS",
+    "Genome choice effected\nWGBS",
+    "All genome choice\neffected Genes",
+    "All Genes\nin genome",
+    "All Genes\nin genome",
+    "All Genes\nin genome",
+    "Genome choice effected\nATACseq",
+    "Genome choice effected\nRNAseqGenome",
+    "Genome choice effected\nRNAseqGenomeXSample",
+    "Genome choice effected\nWGBS",
+    "All genome choice\neffected Genes",
+    "All genome choice\neffected Genes",
+    "All genome choice\neffected Genes"
+  ),
+  Fraction=c(
+    FractionOfGenomeEnrichedForSVs,
+    FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForSVs,
+    FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForSVs,
+    FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForSVs,
+    FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForSVs,
+    FractionOfGenomeEnrichedForINDELs,
+    FractionOfGenomeEnrichedForSNPs,
+    FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForINDELs,
+    FractionOfGeneChoiceGenes_ATACseq_InRegionsEnrichedForSNPs,
+    FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForINDELs,
+    FractionOfGeneChoiceGenes_RNAseqGenome_InRegionsEnrichedForSNPs,
+    FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForINDELs,
+    FractionOfGeneChoiceGenes_RNAseqGenomeXSample_InRegionsEnrichedForSNPs,
+    FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForINDELs,
+    FractionOfGeneChoiceGenes_WGBS_InRegionsEnrichedForSNPs,
+    FractionOfGeneChoiceGenes_All,
+    FractionAllGenesInSV,
+    FractionAllGenesInINDEL,
+    FractionAllGenesInSNP,
+    FractionGeneomeChoice.ATACseq,
+    FractionGeneomeChoice.RNAseqGenome,
+    FractionGeneomeChoice.RNAseqGenomeXSample,
+    FractionGeneomeChoice.WGBS,
+    FractionOfGeneChoiceGenes_All_InRegionsEnrichedForSVs,
+    FractionOfGeneChoiceGenes_All_InRegionsEnrichedForINDELs,
+    FractionOfGeneChoiceGenes_All_InRegionsEnrichedForSNPs
+  )
+)
+
+EnrichmentFractions$Group<-factor(EnrichmentFractions$Group, levels=c("All Genome bins","All Genes\nin genome","All genome choice\neffected Genes","Genome choice effected\nATACseq","Genome choice effected\nRNAseqGenome","Genome choice effected\nRNAseqGenomeXSample","Genome choice effected\nWGBS"), ordered = TRUE)
+EnrichmentFractions$Class<-factor(EnrichmentFractions$Class, levels=c("All genes","SNP","INDEL","SV"), ordered = TRUE)
+
+write.table(x = EnrichmentFractions,file = "FractionsStats.txt", quote = FALSE, sep = "\t", col.names = TRUE, row.names = FALSE)
+```
+
+```{r Plot as parts, include=TRUE, fig.width=8, fig.height=6}
+### Barplot for fraction of all genes
+AllGenesData<-subset(EnrichmentFractions, Class == "All genes")
+AllGenesData$Group<-as.character(AllGenesData$Group)
+
+AllGenesData$Group[1]<-"Any assay affected"
+AllGenesData$Group[2]<-"ATACseq effected"
+AllGenesData$Group[3]<-"RNAseq effected\nGenome"
+AllGenesData$Group[4]<-"             RNAseq effected\nGenome:Sample"
+AllGenesData$Group[5]<-"WGBS effected"
+AllGenesData$Group<-factor(AllGenesData$Group, levels=c("Any assay affected","WGBS effected","             RNAseq effected\nGenome:Sample","RNAseq effected\nGenome","ATACseq effected"), ordered = TRUE)
+
+PlotA<-ggplot(AllGenesData,aes(y=Group, x=100*Fraction))+
+  geom_bar(stat="identity", position="dodge")+
+  #theme(axis.text.y = element_text(angle = 30, hjust = 1))+
+  scale_x_continuous(limits = c(0,50),expand = c(0,0))+
+  labs(title="Percent of genes with\ngenome choice effects", y=NULL, x="%of Genes\n")+
+  CS.THEME
+
+PlotA
+
+### Barplot for SNP fraction
+SNPData<-subset(EnrichmentFractions, Class == "SNP")
+SNPData$Group<-as.character(SNPData$Group)
+
+SNPData$Group[1]<-"Genomic bins"
+SNPData$Group[2]<-"ATACseq effected genes"
+SNPData$Group[3]<-"RNAseq effected genes\nGenome"
+SNPData$Group[4]<-"RNAseq effected genes\nGenome:Sample"
+SNPData$Group[5]<-"WGBS effected genes"
+SNPData$Group[6]<-"All genes"
+SNPData$Group[7]<-"Any assay effected genes"
+
+SNPData$Group<-factor(SNPData$Group, levels=c("Any assay effected genes","WGBS effected genes","RNAseq effected genes\nGenome:Sample","RNAseq effected genes\nGenome","ATACseq effected genes","All genes","Genomic bins"), ordered = TRUE)
+
+PlotB<-ggplot(SNPData,aes(y=Group, x=100*Fraction))+
+  geom_bar(stat="identity", position="dodge")+
+  #theme(axis.text.y = element_text(angle = 30, hjust = 1))+
+  scale_x_continuous(limits = c(0,100),expand = c(0,0))+
+  labs(title="Enrichhment of genes\nin SNP regions", y=NULL, x="%of features in\nSNP enriched regions")+
+  CS.THEME+
+  geom_vline(xintercept = SNPData[SNPData$Group == "All genes",]$Fraction*100, linetype="dashed", color = "red")
+
+PlotB
+
+### Barplot for INDEL fraction
+INDELData<-subset(EnrichmentFractions, Class == "INDEL")
+INDELData$Group<-as.character(INDELData$Group)
+
+INDELData$Group[1]<-"Genomic bins"
+INDELData$Group[2]<-"ATACseq effected genes"
+INDELData$Group[3]<-"RNAseq effected genes\nGenome"
+INDELData$Group[4]<-"RNAseq effected genes\nGenome:Sample"
+INDELData$Group[5]<-"WGBS effected genes"
+INDELData$Group[6]<-"All genes"
+INDELData$Group[7]<-"Any assay effected genes"
+
+INDELData$Group<-factor(INDELData$Group, levels=c("Any assay effected genes","WGBS effected genes","RNAseq effected genes\nGenome:Sample","RNAseq effected genes\nGenome","ATACseq effected genes","All genes","Genomic bins"), ordered = TRUE)
+
+PlotC<-ggplot(INDELData,aes(y=Group, x=100*Fraction))+
+  geom_bar(stat="identity", position="dodge")+
+  #theme(axis.text.y = element_text(angle = 30, hjust = 1))+
+  scale_x_continuous(limits = c(0,100),expand = c(0,0))+
+  labs(title="Enrichhment of genes\nin Indel regions", y=NULL, x="%of features in\nINDEL enriched regions")+
+  CS.THEME+
+  geom_vline(xintercept = INDELData[INDELData$Group == "All genes",]$Fraction*100, linetype="dashed", color = "red")
+
+PlotC
+
+### Barplot for SV fraction
+SVData<-subset(EnrichmentFractions, Class == "SV")
+SVData$Group<-as.character(SVData$Group)
+
+SVData$Group[1]<-"Genomic bins"
+SVData$Group[2]<-"ATACseq effected genes"
+SVData$Group[3]<-"RNAseq effected genes\nGenome"
+SVData$Group[4]<-"RNAseq effected genes\nGenome:Sample"
+SVData$Group[5]<-"WGBS effected genes"
+SVData$Group[6]<-"All genes"
+SVData$Group[7]<-"Any assay effected genes"
+
+SVData$Group<-factor(SVData$Group, levels=c("Any assay effected genes","WGBS effected genes","RNAseq effected genes\nGenome:Sample","RNAseq effected genes\nGenome","ATACseq effected genes","All genes","Genomic bins"), ordered = TRUE)
+
+PlotD<-ggplot(SVData,aes(y=Group, x=100*Fraction))+
+  geom_bar(stat="identity", position="dodge")+
+  #theme(axis.text.y = element_text(angle = 30, hjust = 1))+
+  scale_x_continuous(limits = c(0,100),expand = c(0,0))+
+  labs(title="Enrichhment of genes\nin SV regions", y=NULL, x="%of features in\nSV enriched regions")+
+  CS.THEME+
+  geom_vline(xintercept = SVData[SVData$Group == "All genes",]$Fraction*100, linetype="dashed", color = "red")
+
+PlotD
+```
+
+```{r combine and save to file, include=TRUE, fig.width=10, fig.height=8.5}
+### Make panel
+PanelPlot<-plot_grid(PlotA,PlotB,PlotC,PlotD,ncol=2, nrow = 2, labels = c("A","B","C","D"), label_size = 14)
+
+ggsave2(filename = "GeneSetVersusVars_EnrichmentFractions_Panels.png",plot = PanelPlot,units = "in", width = 12, height = 8.5)
+
+PanelPlot
+```
+```{r calculate enrichment, include=TRUE}
+# Fisher's exact test for enrichment of Var regions overlapping genome choice regions
+GeneList.Wide.All<-read.delim("GeneSetComparisonTable.All.txt", header = TRUE, sep = "\t")
+colnames(GeneList.Wide.All)[4]<-"RNAseqGenome"
+colnames(GeneList.Wide.All)[5]<-"RNAseqGenomeXSample"
+colnames(GeneList.Wide.All)[3]<-"INDEL"
+
+## Make any class
+GeneList.Wide.All$Any<- c(GeneList.Wide.All$ATACseq == TRUE | GeneList.Wide.All$RNAseqGenome == TRUE | GeneList.Wide.All$RNAseqGenomeXSample == TRUE | GeneList.Wide.All$WGBS == TRUE)
+GeneList.Wide.All$None<- c(GeneList.Wide.All$ATACseq == FALSE & GeneList.Wide.All$RNAseqGenome == FALSE & GeneList.Wide.All$RNAseqGenomeXSample == FALSE & GeneList.Wide.All$WGBS == FALSE)
+
+## Build contingency tables
+
+### None gene INDELs
+Contigency.None.INDEL<-as.matrix(table(GeneList.Wide.All[,c(13,3)]))
+
+### None gene SNPs
+Contigency.None.SNP<-as.matrix(table(GeneList.Wide.All[,c(13,6)]))
+
+### None gene SVs
+Contigency.None.SV<-as.matrix(table(GeneList.Wide.All[,c(13,9)]))
+
+### Any Genome choice effect INDELs
+Contigency.Any.INDEL<-as.matrix(table(GeneList.Wide.All[,c(12,3)]))
+
+### Any Genome choice effect SNPs
+Contigency.Any.SNP<-as.matrix(table(GeneList.Wide.All[,c(12,6)]))
+
+### Any Genome choice effect SVs
+Contigency.Any.SV<-as.matrix(table(GeneList.Wide.All[,c(12,7)]))
+
+### ATACseq INDELs
+Contigency.ATACseq.INDEL<-as.matrix(table(GeneList.Wide.All[,c(2,3)]))
+
+### ATACseq SNPs
+Contigency.ATACseq.SNP<-as.matrix(table(GeneList.Wide.All[,c(2,7)]))
+
+### ATACseq SVs
+Contigency.ATACseq.SV<-as.matrix(table(GeneList.Wide.All[,c(2,9)]))
+
+### RNAseqGenome INDELs
+Contigency.RNAseqGenome.INDEL<-as.matrix(table(GeneList.Wide.All[,c(4,3)]))
+
+### RNAseqGenome SNPs
+Contigency.RNAseqGenome.SNP<-as.matrix(table(GeneList.Wide.All[,c(4,7)]))
+
+### RNAseqGenome SVs
+Contigency.RNAseqGenome.SV<-as.matrix(table(GeneList.Wide.All[,c(4,9)]))
+
+### RNAseqGenomeXSample INDELs
+Contigency.RNAseqGenomeXSample.INDEL<-as.matrix(table(GeneList.Wide.All[,c(5,3)]))
+
+### RNAseqGenomeXSample SNPs
+Contigency.RNAseqGenomeXSample.SNP<-as.matrix(table(GeneList.Wide.All[,c(5,7)]))
+
+### RNAseqGenomeXSample SVs
+Contigency.RNAseqGenomeXSample.SV<-as.matrix(table(GeneList.Wide.All[,c(5,9)]))
+
+### WGBS INDELs
+Contigency.WGBS.INDEL<-as.matrix(table(GeneList.Wide.All[,c(10,3)]))
+
+### WGBS SNPs
+Contigency.WGBS.SNP<-as.matrix(table(GeneList.Wide.All[,c(10,7)]))
+
+### WGBS SVs
+Contigency.WGBS.SV<-as.matrix(table(GeneList.Wide.All[,c(10,9)]))
+
+## Perform Fisher's exact tests
+
+### None gene INDELs
+FisherObj.None.INDEL<-fisher.test( Contigency.None.INDEL )
+
+### None gene SNPs
+FisherObj.None.SNP<-fisher.test( Contigency.None.SNP )
+
+### None gene SVs
+FisherObj.None.SV<-fisher.test( Contigency.None.SV )
+
+### Any Genome choice effect INDELs
+FisherObj.Any.INDEL<-fisher.test( Contigency.Any.INDEL )
+
+### Any Genome choice effect SNPs
+FisherObj.Any.SNP<-fisher.test( Contigency.Any.SNP )
+
+### Any Genome choice effect SVs
+FisherObj.Any.SV<-fisher.test( Contigency.Any.SV )
+
+### ATACseq INDELs
+FisherObj.ATACseq.INDEL<-fisher.test( Contigency.ATACseq.INDEL )
+
+### ATACseq SNPs
+FisherObj.ATACseq.SNP<-fisher.test( Contigency.ATACseq.SNP )
+
+### ATACseq SVs
+FisherObj.ATACseq.SV<-fisher.test( Contigency.ATACseq.SV )
+
+### RNAseqGenome INDELs
+FisherObj.RNAseqGenome.INDEL<-fisher.test( Contigency.RNAseqGenome.INDEL )
+
+### RNAseqGenome SNPs
+FisherObj.RNAseqGenome.SNP<-fisher.test( Contigency.RNAseqGenome.SNP )
+
+### RNAseqGenome SVs
+FisherObj.RNAseqGenome.SV<-fisher.test( Contigency.RNAseqGenome.SV )
+
+### RNAseqGenomeXSample INDELs
+FisherObj.RNAseqGenomeXSample.INDEL<-fisher.test( Contigency.RNAseqGenomeXSample.INDEL )
+
+### RNAseqGenomeXSample SNPs
+FisherObj.RNAseqGenomeXSample.SNP<-fisher.test( Contigency.RNAseqGenomeXSample.SNP )
+
+### RNAseqGenomeXSample SVs
+FisherObj.RNAseqGenomeXSample.SV<-fisher.test( Contigency.RNAseqGenomeXSample.SV )
+
+### WGBS INDELs
+FisherObj.WGBS.INDEL<-fisher.test( Contigency.WGBS.INDEL )
+
+### WGBS SNPs
+FisherObj.WGBS.SNP<-fisher.test( Contigency.WGBS.SNP )
+
+### WGBS SVs
+FisherObj.WGBS.SV<-fisher.test( Contigency.WGBS.SV )
+
+
+## Extract odds ratio's and p-value's and combine into a table
+FisherResults<-data.frame(
+  Class=c("No assay","No assay","No assay","Any assay","Any assay","Any assay","ATACseq","ATACseq","ATACseq","RNAseq - Genome","RNAseq - Genome","RNAseq - Genome","RNAseq - Sample:Genome","RNAseq - Sample:Genome","RNAseq - Sample:Genome","WGBS","WGBS","WGBS"),
+  VarType=c("Indel","SNP","SV","Indel","SNP","SV","Indel","SNP","SV","Indel","SNP","SV","Indel","SNP","SV","Indel","SNP","SV"),
+  OddsRatio=c(
+    FisherObj.None.INDEL$estimate,
+    FisherObj.None.SNP$estimate,
+    FisherObj.None.SV$estimate,
+    FisherObj.Any.INDEL$estimate,
+    FisherObj.Any.SNP$estimate,
+    FisherObj.Any.SV$estimate,
+    FisherObj.ATACseq.INDEL$estimate,
+    FisherObj.ATACseq.SNP$estimate,
+    FisherObj.ATACseq.SV$estimate,
+    FisherObj.RNAseqGenome.INDEL$estimate,
+    FisherObj.RNAseqGenome.SNP$estimate,
+    FisherObj.RNAseqGenome.SV$estimate,
+    FisherObj.RNAseqGenomeXSample.INDEL$estimate,
+    FisherObj.RNAseqGenomeXSample.SNP$estimate,
+    FisherObj.RNAseqGenomeXSample.SV$estimate,
+    FisherObj.WGBS.INDEL$estimate,
+    FisherObj.WGBS.SNP$estimate,
+    FisherObj.WGBS.SV$estimate
+  ),
+  PValue=c(
+    FisherObj.None.INDEL$p.value,
+    FisherObj.None.SNP$p.value,
+    FisherObj.None.SV$p.value,
+    FisherObj.Any.INDEL$p.value,
+    FisherObj.Any.SNP$p.value,
+    FisherObj.Any.SV$p.value,
+    FisherObj.ATACseq.INDEL$p.value,
+    FisherObj.ATACseq.SNP$p.value,
+    FisherObj.ATACseq.SV$p.value,
+    FisherObj.RNAseqGenome.INDEL$p.value,
+    FisherObj.RNAseqGenome.SNP$p.value,
+    FisherObj.RNAseqGenome.SV$p.value,
+    FisherObj.RNAseqGenomeXSample.INDEL$p.value,
+    FisherObj.RNAseqGenomeXSample.SNP$p.value,
+    FisherObj.RNAseqGenomeXSample.SV$p.value,
+    FisherObj.WGBS.INDEL$p.value,
+    FisherObj.WGBS.SNP$p.value,
+    FisherObj.WGBS.SV$p.value
+  )
+)
+
+FisherResults$BonferoniAdjustedPValue<-p.adjust(FisherResults$PValue, method = "bonferroni")
+
+## Save the resulting table
+write.table(x = FisherResults,file = "FisherResults.txt", quote = FALSE, sep = "\t", col.names = TRUE, row.names = FALSE)
+```
+
+```{r plot fisher results, include=TRUE}
+## Plot the results as faceted bar plot with levels
+FisherResults$Class<-factor(FisherResults$Class, levels=c("ATACseq","RNAseq - Genome","RNAseq - Sample:Genome","WGBS","Any assay","No assay"), ordered = TRUE)
+FisherResults$VarType<-factor(FisherResults$VarType, levels=c("Indel","SNP","SV"), ordered = TRUE)
+
+FisherResultsPlot<-ggplot(FisherResults, aes(x=VarType, y=OddsRatio))+
+  geom_bar(stat="identity", position="dodge")+
+  facet_wrap(Class~.,ncol=2)+
+  scale_y_continuous(limits = c(0,7), expand = c(0,0))+
+  labs(title="Odds ratio of genes with genome choice effect\noverlapping with variant enriched regions", x="Variant type", y="Odds ratio")+
+  CS.THEME+
+  geom_hline(yintercept = 1, linetype="dashed", color = "red")
+
+#FisherResultsPlot<-plot_grid(FisherResultsPlot, labels=c("E"))
+
+ggsave2(filename = "GeneSetVersusVars_FisherResults.png",plot = FisherResultsPlot,units = "in", width = 6, height = 5.5)
+
+FisherResultsPlot
+```

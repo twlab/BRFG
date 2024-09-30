@@ -1,0 +1,1805 @@
+---
+title: "ATAC-seq peak comparison analysis"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/PeakComparison/")
+
+# Set seed
+set.seed(0)
+
+# Load packages
+library(ggplot2)
+require(cowplot)
+library(viridis)
+library(tidyr)
+library(dplyr)
+library(ggpubr)
+
+theme_set(theme_cowplot())
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r Import peak information}
+All_Original<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/PeakComparison/ClusterPeaks/All_Combined_Peaks.txt", header = FALSE)
+colnames(All_Original)<-c("Chromosome","Start","Stop","Name","Score","Strand","SignalValue","pValue","qValue","Peak")
+
+# Read in pre-lift over data
+All_Original_Query<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/PeakComparison/ClusterPeaks/All_Original_Query_peaks.narrowPeak", header = FALSE)
+colnames(All_Original_Query)<-c("Chromosome","Start","Stop","Name","Score","Strand","SignalValue","pValue","qValue","PeakPosition")
+
+All_Original$Run<-unlist(lapply(
+  1:nrow(All_Original),
+  function(INDEX) paste(strsplit(All_Original$Name[INDEX],split = "_")[[1]][c(3,4,5)],collapse = "_")
+  ))
+
+# subset out non-main chromosome peaks {chr1-chr22, chrX, chrY} specific to pan-genome
+NonMainChromosome<-subset(All_Original, !(Chromosome %in% c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chrX","chrY","FAILEDLIFT")))
+print(nrow(NonMainChromosome))
+
+All_Original<-subset(All_Original, Chromosome %in% c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chrX","chrY","FAILEDLIFT"))
+
+```
+
+```{r How many peaks are called?, include=TRUE}
+RunTable<-data.frame(table(All_Original$Run))
+
+RunNumberOfPeaks<-data.frame(
+Sample=unlist(lapply(as.character(RunTable$Var1), function(RUN) strsplit(RUN, split = "_")[[1]][1] )),
+Replicate=unlist(lapply(as.character(RunTable$Var1), function(RUN) strsplit(RUN, split = "_")[[1]][2] )),
+Genome=unlist(lapply(as.character(RunTable$Var1), function(RUN) strsplit(RUN, split = "_")[[1]][3] )),
+NumberOfPeaks=RunTable$Freq
+)
+
+RunNumberOfPeaks$Genome[RunNumberOfPeaks$Genome %in% c("HG00621.maternal","HG00741.maternal","HG01952.maternal","HG01978.maternal","HG03516.maternal")]<-"Maternal"
+RunNumberOfPeaks$Genome[RunNumberOfPeaks$Genome %in% c("HG00621.paternal.wMito","HG00741.paternal.wMito","HG01952.paternal.wMito","HG01978.paternal.wMito","HG03516.paternal.wMito")]<-"Paternal"
+RunNumberOfPeaks$Genome[RunNumberOfPeaks$Genome == "hg38.LOCAL"]<-"hg38"
+RunNumberOfPeaks$Genome[RunNumberOfPeaks$Genome == "pangenome.hg38"]<-"pangenome"
+
+RunNumberOfPeaks
+```
+
+```{r Plot number of peaks called, fig.width=18, fig.height=4}
+All_Original$LiftsOver<-All_Original$Chromosome!="FAILEDLIFT"
+All_Original$LiftsOver[All_Original$LiftsOver==TRUE]<-"Yes"
+All_Original$LiftsOver[All_Original$LiftsOver==FALSE]<-"No"
+# Split Run field into Sample, Replicate, and Genome
+All_Original$Sample<-unlist(lapply(as.character(All_Original$Run), function(RUN) strsplit(RUN, split = "_")[[1]][1] ))
+All_Original$Replicate<-unlist(lapply(as.character(All_Original$Run), function(RUN) strsplit(RUN, split = "_")[[1]][2] ))
+All_Original$Genome<-unlist(lapply(as.character(All_Original$Run), function(RUN) strsplit(RUN, split = "_")[[1]][3] ))
+
+# Rename
+All_Original$Genome[All_Original$Genome %in% c("HG00621.maternal","HG00741.maternal","HG01952.maternal","HG01978.maternal","HG03516.maternal")]<-"Maternal"
+All_Original$Genome[All_Original$Genome %in% c("HG00621.paternal.wMito","HG00741.paternal.wMito","HG01952.paternal.wMito","HG01978.paternal.wMito","HG03516.paternal.wMito")]<-"Paternal"
+All_Original$Genome[All_Original$Genome == "pangenome.hg38"]<-"pangenome"
+
+# Add the original name as a column
+All_Original$Genome.OriginalName<-unlist(lapply(as.character(All_Original$Run), function(RUN) strsplit(RUN, split = "_")[[1]][3] ))
+
+PlotPeakCounts<-ggplot(subset(RunNumberOfPeaks, Genome != "hg38.NoBlackList"),aes(x=Genome, y=NumberOfPeaks/1000, fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  ylab("Number of peaks (K)")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,125))+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+ggsave2(filename = "PlotPeakCounts.png",plot = PlotPeakCounts, units = "in", width = 18, height = 4)
+PlotPeakCounts
+```
+
+```{r Which peaks can lift over?, include=FALSE}
+as.data.frame(subset(All_Original, LiftsOver=="Yes")$Name)->List_All_LiftedOver_Peak_Names 
+colnames(List_All_LiftedOver_Peak_Names)<-"Peak"
+```
+
+```{r Which peaks cannot lift over?, include=FALSE}
+as.data.frame(subset(All_Original, LiftsOver=="No")$Name)->List_All_CannotLiftOver_Peak_Names
+colnames(List_All_CannotLiftOver_Peak_Names)<-"Peak"
+```
+
+```{r Check for shenanigans, include=TRUE}
+#if there are no shenanigans these should all return 0
+sum(List_All_LiftedOver_Peak_Names$Peak %in% List_All_CannotLiftOver_Peak_Names$Peak)
+sum(List_All_CannotLiftOver_Peak_Names$Peak %in% List_All_LiftedOver_Peak_Names$Peak)
+sum(!(List_All_LiftedOver_Peak_Names$Peak %in% All_Original$Name))
+sum(!(List_All_CannotLiftOver_Peak_Names$Peak %in% All_Original$Name))
+```
+```{r list all runs, include=TRUE}
+unique(All_Original$Run)
+table(All_Original$LiftsOver)
+```
+
+```{r plot number of peaks that can lift over, fig.width=18, fig.height=4}
+PlotPeakCountsCannotLiftOver<-ggplot(subset(All_Original,LiftsOver=="No"),aes(x=Genome, fill=Replicate))+
+  geom_bar(stat = 'count', position = position_dodge())+
+  ylab("Number of peaks\n cannot lift over")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,500))+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  facet_grid(~Sample)+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+ggsave2(filename = "PlotPeakCountsCannotLiftOver.png",plot = PlotPeakCountsCannotLiftOver, units = "in", width = 18, height = 4)
+PlotPeakCountsCannotLiftOver
+```
+
+```{r prepare preak threshold data, include=FALSE}
+# Define buildThresholdedPeakCountsDataframes function
+buildThresholdedPeakCountsDataframes<-function(THRESHOLDS.LIST,SAMPLE,REPLICATE,GENOME,LIFTSOVER){
+  DATA<-lapply(
+    THRESHOLDS.LIST,
+    function(THRESHOLD) data.frame( Threshold=THRESHOLD, Count=nrow(subset(All_Original, Sample==SAMPLE & Replicate==REPLICATE & Genome==GENOME & LiftsOver %in% LIFTSOVER & SignalValue > THRESHOLD)) )
+  ) %>% bind_rows()
+  
+  ## & LiftsOver %in% LIFTSOVER
+  DATA$Percent<-DATA$Count/nrow(subset(All_Original, Sample==SAMPLE & Replicate==REPLICATE & Genome==GENOME ))
+  DATA$Sample<-SAMPLE
+  DATA$Replicate<-REPLICATE
+  DATA$Genome<-GENOME
+  DATA$LiftsOver<-LIFTSOVER
+  return(DATA)
+}
+
+ListOfThresholds<-c(1,2,4,8,16,32)
+
+PeakThresholdBreadown<-lapply(
+  unique(All_Original$Sample),
+  function(SAMPLE) rbind(
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"A","hg38.LOCAL","Yes"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"A","Maternal","Yes" ),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"A","Paternal","Yes"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"A","CHM13","Yes"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"A","pangenome","Yes"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"A","Maternal","No" ),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"A","Paternal","No"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"A","CHM13","No"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"B","hg38.LOCAL","Yes"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"B","Maternal","Yes" ),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"B","Paternal","Yes"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"B","CHM13","Yes"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"B","pangenome","Yes"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"B","Maternal","No" ),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"B","Paternal","No"),
+    buildThresholdedPeakCountsDataframes(ListOfThresholds,SAMPLE,"B","CHM13","No")
+  )
+) %>% bind_rows()
+
+
+PeakThresholdBreadown$Genome[PeakThresholdBreadown$Genome=="hg38.LOCAL"]<-"hg38"
+```
+
+```{r build thresholding plots, include=FALSE}
+ThresholdBreakdown.plot.A<-ggplot(subset(PeakThresholdBreadown, LiftsOver=="Yes") ,aes(x=as.factor(Threshold),y=Count,fill=Genome))+
+  geom_bar(stat = "identity", position = position_dodge())+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  scale_fill_manual(values = CS.ColorPalette[c(28,7,20,4,26),1])+
+  xlab("Signal value threshold")+
+  ylab("Number of peaks above threshold")+
+  ggtitle("Breakdown of peaks:\nCan lift over to hg38")
+
+ThresholdBreakdown.plot.B<-ggplot(subset(PeakThresholdBreadown, LiftsOver=="No") ,aes(x=as.factor(Threshold),y=Count,fill=Genome))+
+  geom_bar(stat = "identity", position = position_dodge())+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  scale_fill_manual(values = CS.ColorPalette[c(28,20,4,26),1])+
+  xlab("Signal value threshold")+
+  ylab("Number of peaks above threshold")+
+  ggtitle("Breakdown of peaks:\nCannot lift over to hg38")
+
+
+ThresholdBreakdown.panel<-plot_grid(ThresholdBreakdown.plot.A,ThresholdBreakdown.plot.B, ncol=1)
+
+ggsave2(filename = "ThresholdBreakdown.panel.png",plot = ThresholdBreakdown.panel,units = "in", height = 12, width = 12)
+```
+
+```{r build volcano plot, include=TRUE, fig.width=12, fig.height=12}
+PeakVolcano.plot<-ggplot(All_Original, aes(x=SignalValue,y=qValue, color=Replicate) )+
+  geom_point(size=0.1, alpha=0.5)+
+  geom_vline(xintercept = 8)+
+  geom_hline(yintercept = -log10(0.001), color="red")+
+  scale_y_continuous(trans = "log10")+
+  facet_grid(Genome~Sample)+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "cividis", begin = 0.9, end = 0.1)
+
+ggsave2(filename = "PeakVolcano.plot.png",plot = PeakVolcano.plot,units = "in", height = 12, width = 12)
+PeakVolcano.plot
+```
+
+```{r filter peaks by signalValue, include=FALSE}
+All_Original.Filtered<-subset(All_Original, SignalValue >=8)
+```
+
+```{r plot localization of peaks which cannot lift over, include=FALSE}
+# filter peaks by signalValue
+All_Original_Query<-subset(All_Original_Query, SignalValue >=8)
+# Make Genome.OriginalName column
+All_Original_Query$Genome.OriginalName<-unlist(lapply(as.character(All_Original_Query$Name), function(RUN) strsplit(RUN, split = "_")[[1]][5] ))
+# Make LiftsOver column
+All_Original_Query$LiftsOver<-All_Original_Query$Name %in% List_All_CannotLiftOver_Peak_Names$Peak
+All_Original_Query$LiftsOver[All_Original_Query$LiftsOver==TRUE]<-"No"
+All_Original_Query$LiftsOver[All_Original_Query$LiftsOver==FALSE]<-"Yes"
+# Make Sample column
+All_Original_Query$Sample<-unlist(lapply(as.character(All_Original_Query$Name), function(RUN) strsplit(RUN, split = "_")[[1]][3] ))
+
+
+library(circlize)
+# Import genome sizes
+GenomeSizes<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HPRC_General/GenomeLengths.csv",sep = ",")
+GenomeSizes<-subset(GenomeSizes,Chromsome != "chrM")
+GenomeSizes$Chromsome<-factor(GenomeSizes$Chromsome, levels = c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chrX","chrY"))
+
+
+# Define plotting function
+PlotLocationThatCannotLiftOver<-function(GENOME,GENOME.ORIGINAL,SAMPLE,FILENAME){
+  df = data.frame(
+    sectors = subset(All_Original_Query,Genome.OriginalName==GENOME.ORIGINAL & LiftsOver=="No" & Sample==SAMPLE)$Chromosome,
+    x = subset(All_Original_Query,Genome.OriginalName==GENOME.ORIGINAL & LiftsOver=="No" & Sample==SAMPLE)$Start,
+    y = subset(All_Original_Query,Genome.OriginalName==GENOME.ORIGINAL & LiftsOver=="No" & Sample==SAMPLE)$qValue
+  )
+  
+  #print(unique(df$sectors))
+  png(file = FILENAME, units = "in", width = 12, height = 12, res = 100)
+  
+  circos.par("track.height" = 0.2)
+  circos.par(cell.padding = c(0.02, 0, 0.02, 0))
+  
+  GenomeSizes<-GenomeSizes[, colnames(GenomeSizes) %in% c("Chromsome",GENOME) ]
+  GenomeSizes<-GenomeSizes[!is.na(GenomeSizes[,2]),]
+  
+  circos.initialize(c(GenomeSizes$Chromsome,GenomeSizes$Chromsome), x = c(GenomeSizes[,colnames(GenomeSizes)==GENOME], rep(0,length(GenomeSizes[,colnames(GenomeSizes)==GENOME]))))
+  
+  circos.track(df$sectors, y = df$y,
+               panel.fun = function(x, y) {
+                 circos.text(CELL_META$xcenter,
+                             CELL_META$cell.ylim[2] + mm_y(5),
+                             CELL_META$sector.index)
+                 circos.axis(labels.cex = 0.05)
+               },
+               bg.col = viridis(24, alpha = 0.2),
+  )
+  
+  
+  circos.trackPoints(df$sectors, df$x, df$y, pch = 16, cex = 0.5)
+  
+  circos.par("track.height" = 0.3)
+  circos.trackHist(df$sectors, df$x, bin.size = 1000000, bg.col = viridis(24, alpha = 0.2), col = NA)
+  
+  dev.off()
+}
+
+# Generate plots
+PlotLocationThatCannotLiftOver("HG00621.paternal","HG00621.paternal.wMito","HG00621","CannotLiftOver_Locations_HG00621_Paternal.png")
+PlotLocationThatCannotLiftOver("HG00621.maternal","HG00621.maternal","HG00621","CannotLiftOver_Locations_HG00621_Maternal.png")
+PlotLocationThatCannotLiftOver("CHM13","CHM13","HG00621","CannotLiftOver_Locations_HG00621_CHM13.png")
+
+PlotLocationThatCannotLiftOver("HG00741.paternal","HG00741.paternal.wMito","HG00741","CannotLiftOver_Locations_HG00741_Paternal.png")
+PlotLocationThatCannotLiftOver("HG00741.maternal","HG00741.maternal","HG00741","CannotLiftOver_Locations_HG00741_Maternal.png")
+PlotLocationThatCannotLiftOver("CHM13","CHM13","HG00741","CannotLiftOver_Locations_HG00741_CHM13.png")
+
+PlotLocationThatCannotLiftOver("HG01952.paternal","HG01952.paternal.wMito","HG01952","CannotLiftOver_Locations_HG01952_Paternal.png")
+PlotLocationThatCannotLiftOver("HG01952.maternal","HG01952.maternal","HG01952","CannotLiftOver_Locations_HG01952_Maternal.png")
+PlotLocationThatCannotLiftOver("CHM13","CHM13","HG01952","CannotLiftOver_Locations_HG01952_CHM13.png")
+
+PlotLocationThatCannotLiftOver("HG01978.paternal","HG01978.paternal.wMito","HG01978","CannotLiftOver_Locations_HG01978_Paternal.png")
+PlotLocationThatCannotLiftOver("HG01978.maternal","HG01978.maternal","HG01978","CannotLiftOver_Locations_HG01978_Maternal.png")
+PlotLocationThatCannotLiftOver("CHM13","CHM13","HG01978","CannotLiftOver_Locations_HG01978_CHM13.png")
+
+PlotLocationThatCannotLiftOver("HG03516.paternal","HG03516.paternal.wMito","HG03516","CannotLiftOver_Locations_HG03516_Paternal.png")
+PlotLocationThatCannotLiftOver("HG03516.maternal","HG03516.maternal","HG03516","CannotLiftOver_Locations_HG03516_Maternal.png")
+PlotLocationThatCannotLiftOver("CHM13","CHM13","HG03516","CannotLiftOver_Locations_HG03516_CHM13.png")
+```
+
+```{r import peak cluster data, include=FALSE}
+Clusters<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/PeakComparison/ClusterPeaks/PeakToClusterIntersect.txt",header = FALSE)
+colnames(Clusters)<-c("Peak","Chromosome","Start","Stop")
+
+Clusters$ClusterNumber<-unlist(lapply(1:nrow(Clusters), function(ROW) paste(Clusters[ROW,2],Clusters[ROW,3],Clusters[ROW,4], sep = "_") ))
+```
+
+```{r add cluster info to peaks, include=FALSE}
+All_Original$Cluster<-Clusters$ClusterNumber[match(All_Original$Name,Clusters$Peak)]
+All_Original.Filtered$Cluster<-Clusters$ClusterNumber[match(All_Original.Filtered$Name,Clusters$Peak)]
+
+# For instances where the cluster is not found, use the peak name
+All_Original$Cluster[is.na(All_Original$Cluster)]<-All_Original$Name[is.na(All_Original$Cluster)]
+All_Original.Filtered$Cluster[is.na(All_Original.Filtered$Cluster)]<-All_Original.Filtered$Name[is.na(All_Original.Filtered$Cluster)]
+```
+
+```{r setup for upset plot, include=TRUE}
+# Generate pre-upset datadrame. Exlcude hg38.NoBlackList
+# Spread by genome and cluster
+Sample.PreUpset.DF<-spread(unique(subset(All_Original.Filtered, Genome!="hg38.NoBlackList")[,c(13,14,12,17,15,17)]), Genome, Cluster)
+colnames(Sample.PreUpset.DF)[colnames(Sample.PreUpset.DF)=="hg38.LOCAL"]<-"hg38"
+
+# Make list of cluster names after filtering
+ClusterNames<-Sample.PreUpset.DF$Cluster.1
+
+# Remove the cluster column now that we have the names in a separate variable
+#Sample.PreUpset.DF<-Sample.PreUpset.DF[,-4]
+
+# Define list of genomes to compare
+RunsToCompare<-colnames(Sample.PreUpset.DF)[5:9]
+
+# For corresponding columns, if the value is NA, set to FALSE
+Sample.PreUpset.DF[RunsToCompare] = !is.na(Sample.PreUpset.DF[RunsToCompare])
+
+# Do the dimensions match? If not, there is a problem
+print(length(ClusterNames)==nrow(Sample.PreUpset.DF))
+```
+
+```{r define upset plot function, include=TRUE}
+library("ComplexUpset")
+
+MakeUpsetPlot<-function(UPSET.DF,RUNSTOCOMPARE,LABEL){
+  upset(
+    UPSET.DF,
+    RUNSTOCOMPARE,
+    name=LABEL,
+    width_ratio=0.1,
+    set_sizes = FALSE,
+    keep_empty_groups=TRUE,
+    sort_sets=FALSE,
+    sort_intersections_by=c('degree'),
+    base_annotations=list(
+      'Intersection size'=intersection_size(
+        text_mapping=aes(
+          label=paste0(
+            round(
+              !!get_size_mode('exclusive_intersection')/!!get_size_mode('inclusive_union') * 100,
+              2
+            ),
+            '%'
+          )                                                                                                  ),mapping=aes(fill=LiftsOver),text=list(
+            vjust=-0.1,
+            hjust=-0.1,
+            angle=60,
+            size=2.5
+          )
+      )+ scale_fill_manual(values=c('Yes'=CS.ColorPalette[11,1], 'No'=CS.ColorPalette[19,1]))
+    )
+  )+CS.THEME
+}
+```
+
+```{r generate upset plots, include=FALSE}
+# Generate individual upset plots
+SampleUpsetPlot_HG00621_A<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG00621" & Replicate=="A"),
+  RunsToCompare,
+  'HG00621 A'
+)
+
+SampleUpsetPlot_HG00621_B<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG00621" & Replicate=="B"),
+  RunsToCompare,
+  'HG00621 B'
+)
+
+SampleUpsetPlot_HG00741_A<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG00741" & Replicate=="A"),
+  RunsToCompare,
+  'HG00741 A'
+)
+
+SampleUpsetPlot_HG00741_B<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG00741" & Replicate=="B"),
+  RunsToCompare,
+  'HG00741 B'
+)
+
+SampleUpsetPlot_HG01952_A<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG01952" & Replicate=="A"),
+  RunsToCompare,
+  'HG01952 A'
+)
+
+SampleUpsetPlot_HG01952_B<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG01952" & Replicate=="B"),
+  RunsToCompare,
+  'HG01952 B'
+)
+
+SampleUpsetPlot_HG01978_A<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG01978" & Replicate=="A"),
+  RunsToCompare,
+  'HG01978 A'
+)
+
+SampleUpsetPlot_HG01978_B<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG01978" & Replicate=="B"),
+  RunsToCompare,
+  'HG01978 B'
+)
+
+SampleUpsetPlot_HG03516_A<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG03516" & Replicate=="A"),
+  RunsToCompare,
+  'HG03516 A'
+)
+
+SampleUpsetPlot_HG03516_B<-MakeUpsetPlot(
+  subset(Sample.PreUpset.DF,Sample=="HG03516" & Replicate=="B"),
+  RunsToCompare,
+  'HG03516 B'
+)
+
+# Look at with versus without black list for hg38
+BL.PreUpset.DF<-spread(unique(subset(All_Original.Filtered, Genome=="hg38.LOCAL" | Genome=="hg38.NoBlackList")[,c(13,14,12,17,15,17)]), Genome, Cluster)
+
+BL.PreUpset.DF<-BL.PreUpset.DF[,-4]
+
+colnames(BL.PreUpset.DF)[colnames(BL.PreUpset.DF)=="hg38.LOCAL"]<-"With blacklist"
+colnames(BL.PreUpset.DF)[colnames(BL.PreUpset.DF)=="hg38.NoBlackList"]<-"Without blacklist"
+
+RunsToCompareBL<-colnames(BL.PreUpset.DF)[4:5]
+
+BL.PreUpset.DF[RunsToCompareBL] = !is.na(BL.PreUpset.DF[RunsToCompareBL])
+BlackListUpsetPlot<-MakeUpsetPlot(BL.PreUpset.DF,RunsToCompareBL,'Black list inclusion')
+
+### Overall panel
+SampleUpsetPanel<-plot_grid(SampleUpsetPlot_HG00621_A,
+                            SampleUpsetPlot_HG00621_B,
+                            SampleUpsetPlot_HG00741_A,
+                            SampleUpsetPlot_HG00741_B,
+                            SampleUpsetPlot_HG01952_A,
+                            SampleUpsetPlot_HG01952_B,
+                            SampleUpsetPlot_HG01978_A,
+                            SampleUpsetPlot_HG01978_B,
+                            SampleUpsetPlot_HG03516_A,
+                            SampleUpsetPlot_HG03516_B,
+                            BlackListUpsetPlot,
+                            labels = "AUTO",
+                            ncol = 4,
+                            byrow = TRUE
+)
+
+ggsave2(filename = "SampleUpsetPanel_8.png",plot = SampleUpsetPanel, units = "in", height = 9.5, width = 30)
+```
+
+```{r plot upset plot HG00621 A, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG00621_A
+```
+
+```{r plot upset plot HG00621 B, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG00621_B
+```
+
+```{r plot upset plot HG00741 A, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG00741_A
+```
+
+```{r plot upset plot HG00741 B, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG00741_B
+```
+
+```{r plot upset plot HG01952 A, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG01952_A
+```
+
+```{r plot upset plot HG01952 B, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG01952_B
+```
+
+```{r plot upset plot HG01978 A, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG01978_A
+```
+
+```{r plot upset plot HG01978 B, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG01978_B
+```
+
+```{r plot upset plot HG03516 A, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG03516_A
+```
+
+```{r plot upset plot HG03516 B, include=TRUE, fig.width=8, fig.height=4}
+SampleUpsetPlot_HG03516_B
+```
+
+```{r plot upset plot BlackList, include=TRUE, fig.width=4, fig.height=4}
+BlackListUpsetPlot
+```
+
+```{r save list of peaks in individual assembles which are missing from hg38, include=FALSE}
+NonReferenceIndividualAssemblyPeaks<-subset(All_Original, Cluster %in% ClusterNames[(Sample.PreUpset.DF$Maternal | Sample.PreUpset.DF$Paternal) & !Sample.PreUpset.DF$hg38] )
+write.table(x = NonReferenceIndividualAssemblyPeaks, file = "NonReferenceIndividualAssemblyPeaks.tsv", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
+```
+
+```{r how many clusters, include=TRUE}
+# How many clusters are there?
+length(All_Original$Cluster)
+# How many unique clusters are there?
+length(unique(All_Original$Cluster))
+```
+
+```{r build fraction specific to individual dataframe, include=TRUE}
+FractionSpecificToIndividual.DF_8<-rbind(
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A" & (Maternal==TRUE | Paternal==TRUE) & CHM13==FALSE & hg38==FALSE & pangenome==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A" & (Maternal==TRUE | Paternal==TRUE) )),
+      Sample=SAMPLE,
+      Replicate="A",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A"))
+    )
+  ) %>% bind_rows(),
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B" & (Maternal==TRUE | Paternal==TRUE) & CHM13==FALSE & hg38==FALSE & pangenome==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B" & (Maternal==TRUE | Paternal==TRUE) )),
+      Sample=SAMPLE,
+      Replicate="B",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A"))
+    )
+  ) %>% bind_rows()
+)
+
+FractionSpecificToIndividual.DF_8
+```
+
+```{r build fraction specific to non-linear reference dataframe, include=TRUE}
+FractionSpecificToNonLinear.DF_8<-rbind(
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A" & CHM13==FALSE & hg38==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A")),
+      Sample=SAMPLE,
+      Replicate="A",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A"))
+    )
+  ) %>% bind_rows(),
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B" & CHM13==FALSE & hg38==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B")),
+      Sample=SAMPLE,
+      Replicate="B",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B"))
+    )
+  ) %>% bind_rows()
+)
+
+FractionSpecificToNonLinear.DF_8
+```
+
+```{r build fraction specific to pangenome reference dataframe, include=TRUE}
+FractionSpecificToPangenome.DF_8<-rbind(
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A" & CHM13==FALSE & hg38==FALSE & pangenome==TRUE & Maternal==FALSE & Paternal==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A")),
+      Sample=SAMPLE,
+      Replicate="A",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A"))
+    )
+  ) %>% bind_rows(),
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B" & CHM13==FALSE & hg38==FALSE & pangenome==TRUE & Maternal==FALSE & Paternal==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B")),
+      Sample=SAMPLE,
+      Replicate="B",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B"))
+    )
+  ) %>% bind_rows()
+)
+
+FractionSpecificToPangenome.DF_8
+```
+```{r build fraction specific to chm13 reference dataframe, include=TRUE}
+FractionSpecificToCHM13.DF_8<-rbind(
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A" & CHM13==TRUE & hg38==FALSE & Maternal==FALSE & Paternal==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A")),
+      Sample=SAMPLE,
+      Replicate="A",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A"))
+    )
+  ) %>% bind_rows(),
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B" & CHM13==TRUE & hg38==FALSE & Maternal==FALSE & Paternal==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B")),
+      Sample=SAMPLE,
+      Replicate="B",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B"))
+    )
+  ) %>% bind_rows()
+)
+
+FractionSpecificToCHM13.DF_8
+```
+
+```{r build fraction specific to hg38 reference dataframe, include=TRUE}
+FractionSpecificToHG38.DF_8<-rbind(
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A" & hg38==TRUE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A")),
+      Sample=SAMPLE,
+      Replicate="A",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="A"))
+    )
+  ) %>% bind_rows(),
+  lapply(
+    unique(Sample.PreUpset.DF$Sample),
+    function(SAMPLE) data.frame(
+      SpecificFraction=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B" & hg38==TRUE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE))/nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B")),
+      Sample=SAMPLE,
+      Replicate="B",
+      NumberTotal=nrow(subset(Sample.PreUpset.DF, Sample==SAMPLE & Replicate=="B"))
+    )
+  ) %>% bind_rows()
+)
+
+FractionSpecificToHG38.DF_8
+```
+
+```{r build reproducibility function, include=FALSE}
+makeReproducibilityPlot<-function(SAMPLE,THRESHOLD){
+  TESTDF<-spread(unique(subset(All_Original, Sample==SAMPLE & SignalValue>=THRESHOLD & Genome!="hg38.NoBlackList")[,c(13,14,12,15,17,17)]), Replicate, Cluster)
+  
+  TESTDF<-TESTDF[,-4]
+  
+  RunsToCompare<-colnames(TESTDF)[4:5]
+  
+  TESTDF[RunsToCompare] = !is.na(TESTDF[RunsToCompare])
+  
+  ReproducibilityUpsetPlot.CHM13<-MakeUpsetPlot(subset(TESTDF,Genome=="CHM13"),RunsToCompare,paste("CHM13",SAMPLE,"reproducibilty. SignalThreshold>=",THRESHOLD,sep=" "))
+  ReproducibilityUpsetPlot.CHM13
+  
+  ReproducibilityUpsetPlot.hg38<-MakeUpsetPlot(subset(TESTDF,Genome=="hg38.LOCAL"),RunsToCompare,paste("hg38",SAMPLE,"reproducibilty. SignalThreshold>=",THRESHOLD,sep=" "))
+  ReproducibilityUpsetPlot.hg38
+  
+  ReproducibilityUpsetPlot.Maternal<-MakeUpsetPlot(subset(TESTDF,Genome=="Maternal"),RunsToCompare,paste("Maternal","reproducibilty. SignalThreshold>=",THRESHOLD,sep=" "))
+  ReproducibilityUpsetPlot.Maternal
+  
+  ReproducibilityUpsetPlot.Paternal<-MakeUpsetPlot(subset(TESTDF,Genome=="Paternal"),RunsToCompare,paste("Paternal","reproducibilty. SignalThreshold>=",THRESHOLD,sep=" "))
+  ReproducibilityUpsetPlot.Paternal
+  
+  Reproducibility.SampleUpsetPanel<-plot_grid(
+    ReproducibilityUpsetPlot.CHM13,
+    ReproducibilityUpsetPlot.hg38,
+    ReproducibilityUpsetPlot.Maternal,
+    ReproducibilityUpsetPlot.Paternal,
+    labels = NULL,
+    ncol = 4,
+    byrow = TRUE
+  )
+  
+  return(Reproducibility.SampleUpsetPanel)
+}
+```
+
+```{r generate reproducibility plots, include=FALSE}
+# HG01952
+ReproducibilityPanel.HG01952<-plot_grid(
+  makeReproducibilityPlot("HG01952",1),
+  makeReproducibilityPlot("HG01952",2),
+  makeReproducibilityPlot("HG01952",4),
+  makeReproducibilityPlot("HG01952",8),
+  makeReproducibilityPlot("HG01952",16),
+  ncol=1,
+  labels = "AUTO"
+)
+
+ggsave2(filename = "ReproducibilityPanel.HG01952.png", plot = ReproducibilityPanel.HG01952, units = "in", height = 16, width = 18)
+
+# HG01978
+ReproducibilityPanel.HG01978<-plot_grid(
+  makeReproducibilityPlot("HG01978",1),
+  makeReproducibilityPlot("HG01978",2),
+  makeReproducibilityPlot("HG01978",4),
+  makeReproducibilityPlot("HG01978",8),
+  makeReproducibilityPlot("HG01978",16),
+  ncol=1,
+  labels = "AUTO"
+)
+
+ggsave2(filename = "ReproducibilityPanel.HG01978.png", plot = ReproducibilityPanel.HG01978, units = "in", height = 16, width = 18)
+
+# HG03516
+ReproducibilityPanel.HG03516<-plot_grid(
+  makeReproducibilityPlot("HG03516",1),
+  makeReproducibilityPlot("HG03516",2),
+  makeReproducibilityPlot("HG03516",4),
+  makeReproducibilityPlot("HG03516",8),
+  makeReproducibilityPlot("HG03516",16),
+  ncol=1,
+  labels = "AUTO"
+)
+
+ggsave2(filename = "ReproducibilityPanel.HG03516.png", plot = ReproducibilityPanel.HG03516, units = "in", height = 16, width = 18)
+
+# HG00621
+ReproducibilityPanel.HG00621<-plot_grid(
+  makeReproducibilityPlot("HG00621",1),
+  makeReproducibilityPlot("HG00621",2),
+  makeReproducibilityPlot("HG00621",4),
+  makeReproducibilityPlot("HG00621",8),
+  makeReproducibilityPlot("HG00621",16),
+  ncol=1,
+  labels = "AUTO"
+)
+
+ggsave2(filename = "ReproducibilityPanel.HG00621.png", plot = ReproducibilityPanel.HG00621, units = "in", height = 16, width = 18)
+
+# HG00741
+ReproducibilityPanel.HG00741<-plot_grid(
+  makeReproducibilityPlot("HG00741",1),
+  makeReproducibilityPlot("HG00741",2),
+  makeReproducibilityPlot("HG00741",4),
+  makeReproducibilityPlot("HG00741",8),
+  makeReproducibilityPlot("HG00741",16),
+  ncol=1,
+  labels = "AUTO"
+)
+
+ggsave2(filename = "ReproducibilityPanel.HG00741.png", plot = ReproducibilityPanel.HG00741, units = "in", height = 16, width = 18)
+```
+
+```{r save list of peaks in specific to pangenome}
+PangenomePeaks<-rbind(  
+subset(All_Original, Sample=="HG00621" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG00621" & Replicate=="A" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG00621" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG00621" & Replicate=="B" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG00741" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG00741" & Replicate=="A" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG00741" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG00741" & Replicate=="B" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG01952" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG01952" & Replicate=="A" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG01952" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG01952" & Replicate=="B" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG01978" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG01978" & Replicate=="A" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG01978" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG01978" & Replicate=="B" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG03516" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG03516" & Replicate=="A" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1),
+subset(All_Original, Sample=="HG03516" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG03516" & Replicate=="B" & pangenome ==TRUE & hg38==FALSE & CHM13==FALSE & Maternal==FALSE & Paternal==FALSE)$Cluster.1)
+)
+
+# Change hg38.LOCAL and hg38.NoBlackList to hg38 and "hg38 nb"
+PangenomePeaks$Genome[PangenomePeaks$Genome=="hg38.LOCAL"]<-"hg38"
+PangenomePeaks$Genome[PangenomePeaks$Genome=="hg38.NoBlackList"]<-"hg38 nbl"
+
+write.table(x = PangenomePeaks, file = "PangenomeSpecificPeaks.tsv", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
+```
+```{r plot signal value distribution of pangenome specific peak calls, include=TRUE, fig.width=8.5, fig.height=4.5}
+PangenomeSpecificPeaks_SignalValueDist<-ggplot(PangenomePeaks, aes(x=Genome, y=SignalValue))+
+  geom_violin(bw=0.025)+
+  geom_hline(yintercept = 8, linetype = "dashed", color = "red")+
+  #geom_jitter(width = 0.25, size=0.05)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)
+# The points below the threshold for the pangenome given we are looking at pan genome specific peaks are isntances of multiple peaks for a given run within a cluster
+
+# Save
+ggsave2(filename = "PangenomeSpecificPeaks_SignalValueDist.png", plot = PangenomeSpecificPeaks_SignalValueDist, units = "in", height = 4.5, width = 8.5)
+
+PangenomeSpecificPeaks_SignalValueDist
+```
+
+```{r plot positions of pangenome specific peaks, include=FALSE}
+# make Start numeric
+PangenomePeaks$Start<-as.numeric(PangenomePeaks$Start)
+
+makeManhattenPlot<-function(dataObj,genomeSizeObj,Chrome,highlightDF=NULL){
+  
+  if(!is.null(highlightDF)){
+  ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_point(size=1.5, alpha=0.75, stroke=0)+
+  geom_hline(yintercept = 8, linetype = "dashed", color = "black")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000))+
+  facet_grid(Sample~Chromosome)+
+  xlab("Postion (Mb)")
+  }else{
+  ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_point(size=1.5, alpha=0.75, stroke=0)+
+  geom_hline(yintercept = 8, linetype = "dashed", color = "black")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000))+
+  facet_grid(Sample~Chromosome)+
+  xlab("Postion (Mb)")
+  }
+  
+}
+
+PangenomePeaks_plot_list <- list(
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr1")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr2")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr3")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr4")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr5")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr6")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr7")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr8")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr9")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr10")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr11")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr12")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr13")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr14")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr15")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr16")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr17")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr18")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr19")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr20")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr21")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr22")+theme(legend.position = "none")
+)
+# Make panel
+PangenomePeaks_ManhattenPanel<-plot_grid( plotlist = PangenomePeaks_plot_list, ncol = 11, nrow = 2)
+
+# Extract legend
+PangenomePeaks_ManhattenPanel.legendplot<-as_ggplot(get_legend(makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr1")+theme(legend.position = "bottom")))
+
+# Add legend to plot
+PangenomePeaks_ManhattenPanel.CombinedPlot<-plot_grid(PangenomePeaks_ManhattenPanel, PangenomePeaks_ManhattenPanel.legendplot, ncol=1, rel_heights = c(1, 0.05))
+
+# Clean up
+rm(PangenomePeaks_plot_list, PangenomePeaks_ManhattenPanel.legendplot)
+```
+```{r save and plot manhatten plot of pangenome specific peaks, include=TRUE, fig.width=45, fig.height=24}
+ggsave2(filename = "PangenomePeaks_ManhattenPanel.png", plot = PangenomePeaks_ManhattenPanel.CombinedPlot, units = "in", height = 24, width = 45)
+PangenomePeaks_ManhattenPanel.CombinedPlot
+```
+
+```{r generate cherry picked example chr14, fig.width=5, fig.height=10}
+HGSVCdata<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HGSVC_SV_Enrichment/HGSVC_SV_Hotspots.bed", header = TRUE)
+
+PangenomePeaks_Manhatten_Chr14<-makeManhattenPlot(PangenomePeaks,GenomeSizes[c("Chromsome","hg38")],"chr14",subset(HGSVCdata, Chr=="chr14") )+theme(legend.position = "bottom")
+ggsave2(filename = "PangenomePeaks_Manhatten_Chr14.png", plot = PangenomePeaks_Manhatten_Chr14, units = "in", height = 10, width = 5)
+
+PangenomePeaks_Manhatten_Chr14
+```
+
+
+
+
+
+```{r save list of peaks in missing from pangenome}
+PangenomeMissingPeaks<-rbind(  
+subset(All_Original, Sample=="HG00621" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG00621" & Replicate=="A" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG00621" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG00621" & Replicate=="B" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG00741" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG00741" & Replicate=="A" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG00741" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG00741" & Replicate=="B" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG01952" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG01952" & Replicate=="A" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG01952" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG01952" & Replicate=="B" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG01978" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG01978" & Replicate=="A" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG01978" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG01978" & Replicate=="B" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG03516" & Replicate=="A" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG03516" & Replicate=="A" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1),
+subset(All_Original, Sample=="HG03516" & Replicate=="B" & Cluster%in% subset(Sample.PreUpset.DF, Sample=="HG03516" & Replicate=="B" & pangenome ==FALSE & hg38==TRUE & CHM13==TRUE & Maternal==TRUE & Paternal==TRUE)$Cluster.1)
+)
+
+# Change hg38.LOCAL and hg38.NoBlackList to hg38 and "hg38 nb"
+PangenomeMissingPeaks$Genome[PangenomeMissingPeaks$Genome=="hg38.LOCAL"]<-"hg38"
+PangenomeMissingPeaks$Genome[PangenomeMissingPeaks$Genome=="hg38.NoBlackList"]<-"hg38 nbl"
+
+write.table(x = PangenomeMissingPeaks, file = "PangenomeMissingPeaks.tsv", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
+```
+```{r plot signal value distribution of pangenome missing peak calls, include=TRUE, fig.width=8.5, fig.height=4.5}
+PangenomeMissingPeaks_SignalValueDist<-ggplot(PangenomeMissingPeaks, aes(x=Genome, y=SignalValue))+
+  geom_violin(bw=0.025)+
+  geom_hline(yintercept = 8, linetype = "dashed", color = "red")+
+  #geom_jitter(width = 0.25, size=0.05)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)
+
+# Save
+ggsave2(filename = "PangenomeMissingPeaks_SignalValueDist.png", plot = PangenomeMissingPeaks_SignalValueDist, units = "in", height = 4.5, width = 8.5)
+
+PangenomeMissingPeaks_SignalValueDist
+```
+
+```{r plot positions of pangenome missing peaks, include=FALSE}
+# make Start numeric
+PangenomeMissingPeaks$Start<-as.numeric(PangenomeMissingPeaks$Start)
+
+PangenomeMissingPeaks_plot_list <- list(
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr1")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr2")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr3")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr4")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr5")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr6")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr7")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr8")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr9")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr10")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr11")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr12")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr13")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr14")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr15")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr16")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr17")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr18")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr19")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr20")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr21")+theme(legend.position = "none"),
+  makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr22")+theme(legend.position = "none")
+)
+
+# Make panel
+PangenomeMissingPeaks_ManhattenPanel<-plot_grid( plotlist = PangenomeMissingPeaks_plot_list, ncol = 11, nrow = 2)
+
+# Extract legend
+PangenomeMissingPeaks_ManhattenPanel.legendplot<-as_ggplot(get_legend(makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr1")+theme(legend.position = "bottom")))
+
+# Add legend to plot
+PangenomeMissingPeaks_ManhattenPanel.CombinedPlot<-plot_grid(PangenomeMissingPeaks_ManhattenPanel, PangenomeMissingPeaks_ManhattenPanel.legendplot, ncol=1, rel_heights = c(1, 0.05))
+
+# Clean up
+rm(PangenomeMissingPeaks_plot_list, PangenomeMissingPeaks_ManhattenPanel.legendplot)
+```
+```{r save and plot manhatten plot of pangenome missing peaks, include=TRUE, fig.width=45, fig.height=24}
+ggsave2(filename = "PangenomeMissingPeaks_ManhattenPanel.png", plot = PangenomeMissingPeaks_ManhattenPanel.CombinedPlot, units = "in", height = 24, width = 45)
+PangenomeMissingPeaks_ManhattenPanel.CombinedPlot
+```
+
+```{r generate cherry picked example of pangenome missing chr1, fig.width=5, fig.height=10}
+PangenomeMissingPeaks_Manhatten_Chr1<-makeManhattenPlot(PangenomeMissingPeaks,GenomeSizes[c("Chromsome","hg38")],"chr1",subset(HGSVCdata, Chr=="chr1") )+theme(legend.position = "bottom")
+ggsave2(filename = "PangenomeMissingPeaks_Manhatten_Chr1.png", plot = PangenomeMissingPeaks_Manhatten_Chr1, units = "in", height = 10, width = 5)
+
+PangenomeMissingPeaks_Manhatten_Chr1
+```
+
+```{r load in gzipped bedgraph files}
+# for examples of pangenome reads changing fate
+# Load in bedgraph files
+
+HG00621_A_Pangenome_hg38_fate_2_query <- read.table(gzfile("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_2_query.bedgraph.gz"), header = FALSE)
+colnames(HG00621_A_Pangenome_hg38_fate_2_query)<-c("Chromosome","Start","End","Coverage")
+
+HG00621_A_Pangenome_hg38_fate_3_query <- read.table(gzfile("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_3_query.bedgraph.gz"), header = FALSE)
+colnames(HG00621_A_Pangenome_hg38_fate_3_query)<-c("Chromosome","Start","End","Coverage")
+
+HG00621_A_Pangenome_hg38_fate_6_query <- read.table(gzfile("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_6_query.bedgraph.gz"), header = FALSE)
+colnames(HG00621_A_Pangenome_hg38_fate_6_query)<-c("Chromosome","Start","End","Coverage")
+
+HG00621_A_Pangenome_hg38_fate_8_query <- read.table(gzfile("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_8_query.bedgraph.gz"), header = FALSE)
+colnames(HG00621_A_Pangenome_hg38_fate_8_query)<-c("Chromosome","Start","End","Coverage")
+
+HG00621_A_Pangenome_hg38_fate_4_reference <- read.table(gzfile("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_4_reference.bedgraph.gz"), header = FALSE)
+colnames(HG00621_A_Pangenome_hg38_fate_4_reference)<-c("Chromosome","Start","End","Coverage")
+
+HG00621_A_Pangenome_hg38_fate_6_reference <- read.table(gzfile("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_6_reference.bedgraph.gz"), header = FALSE)
+colnames(HG00621_A_Pangenome_hg38_fate_6_reference)<-c("Chromosome","Start","End","Coverage")
+
+HG00621_A_Pangenome_hg38_fate_7_reference <- read.table(gzfile("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_7_reference.bedgraph.gz"), header = FALSE)
+colnames(HG00621_A_Pangenome_hg38_fate_7_reference)<-c("Chromosome","Start","End","Coverage")
+
+HG00621_A_Pangenome_hg38_fate_8_reference <- read.table(gzfile("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_8_reference.bedgraph.gz"), header = FALSE)
+colnames(HG00621_A_Pangenome_hg38_fate_8_reference)<-c("Chromosome","Start","End","Coverage")
+```
+
+```{r fate change manhatten life function}
+makeFateChangeManhattenPlot<-function(dataObj,genomeSizeObj,Chrome,Fate2queryBedgrap,Fate3queryBedgrap,Fate6queryBedgrap,Fate8queryBedgrap,Fate4RefBedgrap,Fate6RefBedgrap,Fate7RefBedgrap,Fate8RefBedgrap,highlightDF=NULL){
+  
+  if(!is.null(highlightDF)){
+  highlightDF<-subset(highlightDF, Chr==Chrome)
+  
+  Bottom<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_point(size=1.5, alpha=0.75, stroke=0)+
+  geom_hline(yintercept = 8, linetype = "dashed", color = "black")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  theme(legend.position = "none")
+  
+  
+  Top<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_line(data = subset(Fate2queryBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  facet_grid(.~Chromosome)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 2 Query\nCoverage")
+  
+  Top2<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_line(data = subset(Fate3queryBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 3 Query\nCoverage")
+
+  Top3<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_line(data = subset(Fate6queryBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 6 Query\nCoverage")
+
+  Top4<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_line(data = subset(Fate4RefBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 4 Ref\nCoverage")  
+
+  Top5<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_line(data = subset(Fate6RefBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 6 Ref\nCoverage")    
+
+  Top6<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_line(data = subset(Fate7RefBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 7 Ref\nCoverage")
+  
+  Top7<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_line(data = subset(Fate8RefBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 8 Ref\nCoverage")
+  
+  Top8<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_rect(data = highlightDF, inherit.aes = FALSE, aes(xmin = Start/1000000, xmax = End/1000000, ymin = -Inf, ymax = Inf), fill = "#55575725", alpha = 0.6)+
+  geom_line(data = subset(Fate6queryBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 8 Query\nCoverage")
+  
+  plot_grid(Top, Top2, Top3, Top8, Top4, Top5, Top6, Top7, Bottom, ncol=1, labels = "AUTO")
+  
+  }else{
+  
+  
+  Bottom<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_point(size=1.5, alpha=0.75, stroke=0)+
+  geom_hline(yintercept = 8, linetype = "dashed", color = "black")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  theme(legend.position = "none")
+  
+  Top<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_line(data = subset(Fate2queryBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  facet_grid(.~Chromosome)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 2 Query\nCoverage")
+  
+  Top2<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_line(data = subset(Fate3queryBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 3 Query\nCoverage")
+
+  Top3<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_line(data = subset(Fate3queryBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 6 Query\nCoverage")
+
+  Top4<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_line(data = subset(Fate4RefBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 4 Ref\nCoverage")
+  
+  Top5<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_line(data = subset(Fate6RefBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 6 Ref\nCoverage")
+
+  Top6<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_line(data = subset(Fate7RefBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 7 Ref\nCoverage")
+
+  Top7<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_line(data = subset(Fate8RefBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 8 Ref\nCoverage")
+
+  Top8<-ggplot(subset(dataObj, Chromosome==Chrome), aes(x=Start/1000000,y=SignalValue, color=Genome) )+
+  geom_line(data = subset(Fate8queryBedgrap, Chromosome==Chrome), aes(x=Start/1000000, y=Coverage), color = "red")+
+  CS.THEME+
+  scale_color_viridis(discrete = TRUE, option = "H")+
+  scale_x_continuous(limits = c(0,genomeSizeObj[genomeSizeObj$Chromsome==Chrome,2]/1000000), n.breaks = 15)+
+  xlab("Postion (Mb)")+
+  ylab("Fate 8 Query\nCoverage")
+  
+  plot_grid(Top, Top2, Top3, Top8, Top4, Top5, Top6, Top7, Bottom, ncol=1, labels = "AUTO")
+  
+  }
+  
+}
+
+```
+
+
+```{r plot Chromosome 1 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make Start numeric
+PangenomePeaks$Start<-as.numeric(PangenomePeaks$Start)
+
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_1_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr1",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_1_plot
+```
+
+```{r plot Chromosome 2 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_2_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr2",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_2_plot
+```
+
+```{r plot Chromosome 3 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_3_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr3",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_3_plot
+```
+
+```{r plot Chromosome 4 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_4_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr4",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_4_plot
+```
+
+```{r plot Chromosome 5 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_5_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr5",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_5_plot
+```
+
+```{r plot Chromosome 6 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_6_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr6",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_6_plot
+```
+
+```{r plot Chromosome 7 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_7_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr7",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_7_plot
+```
+
+```{r plot Chromosome 8 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_8_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr8",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_8_plot
+```
+
+```{r plot Chromosome 9 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_9_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr9",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_9_plot
+```
+
+```{r plot Chromosome 10 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_10_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr10",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_10_plot
+```
+
+```{r plot Chromosome 11 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_11_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr11",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_11_plot
+```
+
+```{r plot Chromosome 12 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_12_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr12",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_12_plot
+```
+
+```{r plot Chromosome 13 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_13_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr13",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_13_plot
+```
+
+```{r plot Chromosome 14 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_14_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr14",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_14_plot
+```
+
+```{r plot Chromosome 15 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_15_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr15",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_15_plot
+```
+
+```{r plot Chromosome 16 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_16_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr16",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_16_plot
+```
+
+```{r plot Chromosome 17 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_17_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr17",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_17_plot
+```
+
+```{r plot Chromosome 18 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_18_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr18",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_18_plot
+```
+
+```{r plot Chromosome 19 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_19_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr19",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_19_plot
+```
+
+```{r plot Chromosome 20 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_20_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr20",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_20_plot
+```
+
+```{r plot Chromosome 21 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_21_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr21",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_21_plot
+```
+
+```{r plot Chromosome 22 HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_22_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chr22",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_22_plot
+```
+
+```{r plot Chromosome X HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_X_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chrX",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_X_plot
+```
+
+```{r plot Chromosome Y HG00621 pangenome specific peak locations compared to shifted fate coverage, include=TRUE, fig.height=25, fig.width=10}
+# Make plot
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_Y_plot<-makeFateChangeManhattenPlot(
+  subset(PangenomePeaks, Sample=="HG00621" & Replicate=="A"),
+  GenomeSizes[c("Chromsome","hg38")],
+  "chrY",
+  HG00621_A_Pangenome_hg38_fate_2_query,
+  HG00621_A_Pangenome_hg38_fate_3_query,
+  HG00621_A_Pangenome_hg38_fate_6_query,
+  HG00621_A_Pangenome_hg38_fate_8_query,
+  HG00621_A_Pangenome_hg38_fate_4_reference,
+  HG00621_A_Pangenome_hg38_fate_6_reference,
+  HG00621_A_Pangenome_hg38_fate_7_reference,
+  HG00621_A_Pangenome_hg38_fate_8_reference,
+  HGSVCdata
+  )
+
+HG00621_A_Pangenome_hg38_fate_specificity__chromosome_Y_plot
+```
+
+```{r prepare for accessability PCA, include=FALSE}
+# Generate list of peaks shared by all genomes
+ClusterNames.SharedAll<-ClusterNames[rowSums(Sample.PreUpset.DF[,5:9])==4]
+
+# Filter for shared peaks
+All_Original.Filtered.SharedAll<-subset(All_Original, Cluster %in% ClusterNames.SharedAll)
+
+# Remove unneeded columns
+All_Original.Filtered.SharedAll.PCA<-All_Original.Filtered.SharedAll[,c(13,14,15,7,17,11)]
+
+# Mark peaks with multiple peaks in cluster from the same run
+All_Original.Filtered.SharedAll.PCA$Duplicated<-duplicated(paste(All_Original.Filtered.SharedAll.PCA$Cluster,All_Original.Filtered.SharedAll.PCA$Run,sep="_"))
+
+All_Original.Filtered.SharedAll.PCA$Duplicated
+
+# I only included peaks which are not duplicated. I believe these duplication occur when in one run two peaks are called where in another run it's one large peak.
+# Remove duplicated peaks and spread to wide format
+All_Original.Filtered.SharedAll.PCA.Wide<-spread(subset(All_Original.Filtered.SharedAll.PCA,Duplicated==FALSE)[,c(4,5,6)], Cluster, SignalValue)
+
+# How many peaks remain?
+print(ncol(All_Original.Filtered.SharedAll.PCA.Wide))
+
+# Check clusters for NAs
+TestsForNAinPCAWide<-colSums(apply( All_Original.Filtered.SharedAll.PCA.Wide[,2:ncol(All_Original.Filtered.SharedAll.PCA.Wide)], MARGIN = 2, is.na ))==0
+
+# Extract names of clusters without NAs
+NamesofClustersWithoutNAs<-colnames(All_Original.Filtered.SharedAll.PCA.Wide[,2:ncol(All_Original.Filtered.SharedAll.PCA.Wide)][,TestsForNAinPCAWide])
+
+# Remove clusters with NAs
+All_Original.Filtered.SharedAll.PCA.Wide.NAremoved<-All_Original.Filtered.SharedAll.PCA.Wide[,colnames(All_Original.Filtered.SharedAll.PCA.Wide) %in% c("Run",NamesofClustersWithoutNAs)]
+```
+
+```{r perform PCA}
+library(factoextra)
+# Perform PCA
+res.pca<-prcomp(All_Original.Filtered.SharedAll.PCA.Wide.NAremoved[,2:ncol(All_Original.Filtered.SharedAll.PCA.Wide.NAremoved)], scale=TRUE)
+
+# Extract group information for plotting and partial eta squared estimation
+groups.Sample <- as.factor( unlist(lapply(All_Original.Filtered.SharedAll.PCA.Wide.NAremoved[,1], function(X) strsplit(X,split = "_")[[1]][1])) )
+groups.Replicate <- as.factor(unlist(lapply(All_Original.Filtered.SharedAll.PCA.Wide.NAremoved[,1], function(X) strsplit(X,split = "_")[[1]][2])))
+groups.Genome <- unlist(lapply(All_Original.Filtered.SharedAll.PCA.Wide.NAremoved[,1], function(X) strsplit(X,split = "_")[[1]][3]))
+groups.Genome[groups.Genome %in% c("HG00621.maternal","HG00741.maternal","HG01952.maternal","HG01978.maternal","HG03516.maternal")]<-"Maternal"
+groups.Genome[groups.Genome %in% c("HG00621.paternal.wMito","HG00741.paternal.wMito","HG01952.paternal.wMito","HG01978.paternal.wMito","HG03516.paternal.wMito")]<-"Paternal"
+groups.Genome[groups.Genome=="hg38.LOCAL"]<-"hg38"
+groups.Genome[groups.Genome=="hg38.NoBlackList"]<-"hg38 nb"
+groups.Genome[groups.Genome=="pangenome.hg38"]<-"pangenome"
+groups.Genome<-as.factor(groups.Genome)
+```
+
+```{r perform partial eta square estimation, include=TRUE}
+# Generate variance partitioning object
+PCA.VarObject<-cbind(res.pca$x,data.frame(Sample=groups.Sample),data.frame(Replicate=groups.Replicate),data.frame(Genome=groups.Genome))
+
+# Perform MANOVA
+manova_model<-manova(cbind(PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10,PC11,PC12)~Sample*Genome+Replicate,PCA.VarObject)
+manova_model.Summary<-summary(manova_model)
+aov_results <- summary.aov(manova_model)
+
+# print the MANOVA results
+aov_results
+
+# Define the number of PCs consider for partial eta squared estimation
+NUM.PCs<-12
+
+# Estimate partial eta squareds
+PC.PartialEtaSquareds<-lapply(1:NUM.PCs,
+                              function(PC){aov_results[[PC]][[2]][1:5]/sum(aov_results[[PC]][[2]])}
+) %>% do.call(rbind,.) %>% as.data.frame 
+colnames(PC.PartialEtaSquareds)<-c("Sample","Genome","Sample:Genome","Replicate","Residual")
+
+# Extract statistics
+PC.Statistics<-cbind(as.factor(1:NUM.PCs),get_eig(res.pca)[1:NUM.PCs,],PC.PartialEtaSquareds)
+colnames(PC.Statistics)<-c("PC","Eigenvalue","VariancePercent","CumulativeVariancePercent","PartialEtaSquared.Sample","PartialEtaSquared.Genome","PartialEtaSquared.Sample:Genome","PartialEtaSquared.Replicate","PartialEtaSquared.Residual")
+rownames(PC.Statistics)<-NULL
+
+# Calculate %variance accounted for by each factor
+PC.Statistics$VariancePercent.Sample<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Sample
+PC.Statistics$VariancePercent.Genome<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Genome
+PC.Statistics$VariancePercent.Sample.Genome<-PC.Statistics$VariancePercent*PC.Statistics$`PartialEtaSquared.Sample:Genome`
+PC.Statistics$VariancePercent.Replicate<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Replicate
+PC.Statistics$VariancePercent.Residual<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Residual
+
+# Save the PC statistics
+write.table(PC.Statistics, file = "PC.Statistics.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Make long df to plot variance percents
+PC.Statistics.VariancePercent.Long<-gather(PC.Statistics[,c(1,10:14)],key="VarianceType",value="VariancePercent",VariancePercent.Sample:VariancePercent.Residual)
+# clean up names
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("VariancePercent.","",PC.Statistics.VariancePercent.Long$VarianceType)
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("Sample.Genome","Sample:Genome",PC.Statistics.VariancePercent.Long$VarianceType)
+
+# Order factor levels
+PC.Statistics.VariancePercent.Long$VarianceType<-factor(PC.Statistics.VariancePercent.Long$VarianceType, levels = c("Sample","Genome","Sample:Genome","Replicate","Residual"), ordered = TRUE)
+```
+
+```{r plot variance partitioning, include=TRUE, fig.width=9, fig.height=6}
+# Generate plot
+Plot.PCs<-ggplot(PC.Statistics.VariancePercent.Long, aes(fill=VarianceType, y=VariancePercent, x=PC)) + 
+  geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#ff7f5d","#2d5879","#b2823f","#aaaaaa","#333434"))+
+  #scale_fill_manual(values = c("#2d5879","#aaaaaa","#333434","#ff7f5d","#b2823f"))+
+  ylab("Percent of variance")+
+  xlab("Principal component")+
+  ggtitle("ATACseq - Acessibility\n%Variance captured by PCs partitioned by factor")+
+  CS.THEME+
+  theme(legend.position="bottom")+
+  scale_y_continuous(limits = c(0,round(max(PC.Statistics$VariancePercent)*1.05)), expand = c(0,0))+
+  theme(legend.key.size = unit(0.2, "cm"))
+
+# Save
+ggsave2(filename = "Peaks_PCs.png",plot = Plot.PCs,units = "in",width = 9, height = 6)
+
+# Print
+Plot.PCs
+```
+
+```{r generate plot accessability PCA, include=FALSE}
+# Color coded by Sample
+PCA.Plot.Sample<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Sample,
+                              palette = viridis(5, end=0.9),
+                              repel = TRUE,
+                              addEllipses = TRUE,
+                              ellipse.type = "convex",
+                              title="Accessibility - Sample"
+)+
+  CS.THEME
+
+# Color coded by Genome
+PCA.Plot.Genome<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Genome,
+                              palette = viridis(6,option = "magma", end = 0.8),
+                              repel = TRUE,
+                              title="Accessibility - Genome"
+)+
+  CS.THEME
+
+# Color coded by Replicate
+PCA.Plot.Replicate<-fviz_pca_ind(res.pca,
+                                 col.ind = groups.Replicate,
+                                 palette = viridis(2,option = "cividis", end = 0.8),
+                                 repel = TRUE,
+                                 title="Accessibility - Replicate"
+)+
+  CS.THEME
+
+# Combine plots
+PCA.Panel<-plot_grid(PCA.Plot.Sample,PCA.Plot.Genome,PCA.Plot.Replicate,labels = c("A","B","C"),ncol=3)
+
+# Save plot
+ggsave2(filename = "All.Shared.Peaks.PCA.Panel.png",plot = PCA.Panel, units = "in", width = 17*1, height = 6*0.75)
+```
+
+```{r plot accessability PCA, include=TRUE, fig.width=17, fig.height=4.5}
+PCA.Panel
+```

@@ -1,0 +1,723 @@
+---
+title: "Combine and plot ORA results and compare genome choice effects "
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/")
+rm(list = ls())
+set.seed(0)
+
+require("ggplot2")
+require("cowplot")
+require("viridis")
+require("reshape2")
+require("dplyr")
+require("tidyverse")
+library(gridExtra)
+library(grid)
+library(text2vec)
+library(umap)
+
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+
+theme_set(theme_cowplot())
+```
+
+```{r load and prep data}
+### Read in data
+enrichment_data <- read.delim("Combined_ORA_DF.txt", stringsAsFactors=FALSE)
+
+### replace periods in column names with underscores
+colnames(enrichment_data) <- gsub("\\.", "_", colnames(enrichment_data))
+
+### Tag by significance
+enrichment_data$Pass<-enrichment_data$FDR<=0.05
+table(enrichment_data[,10:12])
+
+### rank by fold enrichment
+enrichment_data <- enrichment_data[order(enrichment_data$Ratio),]
+
+### round Count data to zero decimals
+enrichment_data$Count <- round(enrichment_data$Count, 0)
+
+### format columns as factors for precise plotting
+enrichment_data$Description <- factor(enrichment_data$Description, levels=unique(enrichment_data$Description)) # each description is a unique level
+enrichment_data$Class <- factor(enrichment_data$Class, levels=unique(enrichment_data$Class)) # levels are the unique functional classes
+
+# Change names
+#enrichment_data$Set[enrichment_data$Set=="SV"]<-"SV\nEnriched"
+```
+```{r define add line function to improve plotting}
+addline_format <- function(X,...){
+  
+  if (length(strsplit(x = X,split = " ")[[1]])>4){
+    key<-paste(c(strsplit(x = X,split = " ")[[1]][4:5]),collapse = " ")
+    replacement<-paste( c(strsplit(x = X,split = " ")[[1]][4],"\n",strsplit(x = X,split = " ")[[1]][5]),collapse = "")
+    
+    gsub(key,replacement,X)
+  } else {
+    X
+  }
+  
+}
+```
+
+```{r ATAC-seq}
+##### ATACseq
+DATA<-subset(enrichment_data,Assay=="ATACseq")
+
+size_circles<-ceiling(max(DATA$Count, na.rm=TRUE)/5)*5
+#y_axis_limits <- ceiling(max(DATA$Ratio, na.rm=TRUE)/5)*5
+x_axis_limits <- 4
+XAxisIncrement<-0.8
+
+DATA$Description <- as.character(DATA$Description)
+DATA$Description <- unlist(lapply(DATA$Description, function(X) addline_format(X)))
+DATA$Description <- factor(DATA$Description, levels=unique(DATA$Description)) # each description is a unique level
+
+PlotA<-ggplot(DATA, aes(y=Description, x=Ratio)) +
+  geom_point(shape=21, stroke=1, aes(fill=Class, size=Count, col=Pass)) +
+  geom_hline(yintercept = 1, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 9, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Class, size=Count, col=Pass)) +
+  scale_color_manual(values = c("darkgrey","black"))+
+  scale_size_continuous(breaks=seq(0, size_circles, size_circles/5)) +
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="B", discrete=TRUE) +
+  #scale_fill_manual(guide="legend", values=term_class_colors, drop=FALSE) +
+  scale_x_continuous(limits=c(0, x_axis_limits), breaks=seq(0, x_axis_limits, XAxisIncrement), expand=c(0.06,0.06)) +
+  labs(y=NULL, x="Fold Enrichment") +
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=0, hjust=1, vjust=0.5, size=10),
+        axis.text.x=element_text(size=10),
+        axis.title.x=element_text(size=12),
+        #plot.margin=margin(t=1, r=1, b=10, l=10, unit="pt"),
+        plot.margin=margin(t=1, r=10, b=10, l=1, unit="pt"),
+        legend.position="none", legend.justification="center", legend.title.align=0.5, 
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold"),
+        legend.key.size=unit(2,"null")) + 
+  #facet_grid(Set~Assay)+
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), 
+         size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  ggtitle("ATACseq")
+
+PlotA
+```
+
+```{r RNA-seq Genome}
+DATA<-subset(enrichment_data,Group=="Genome")
+
+size_circles<-ceiling(max(DATA$Count, na.rm=TRUE)/5)*5
+x_axis_limits <- ceiling(max(DATA$Ratio, na.rm=TRUE)/5)*5
+#y_axis_limits <- 4
+XAxisIncrement<-5
+
+DATA$Description <- as.character(DATA$Description)
+DATA$Description <- unlist(lapply(DATA$Description, function(X) addline_format(X)))
+DATA$Description <- factor(DATA$Description, levels=unique(DATA$Description)) # each description is a unique level
+
+PlotB<-ggplot(DATA, aes(y=Description, x=Ratio)) +
+  geom_point(shape=21, stroke=1, aes(fill=Class, size=Count, col=Pass)) +
+  geom_hline(yintercept = 5, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Class, size=Count, col=Pass)) +
+  scale_color_manual(values = c("darkgrey","black"))+
+  scale_size_continuous(breaks=seq(0, size_circles, size_circles/5)) +
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="B", discrete=TRUE) +
+  #scale_fill_manual(guide="legend", values=term_class_colors, drop=FALSE) +
+  scale_x_continuous(limits=c(0, x_axis_limits), breaks=seq(0, x_axis_limits, XAxisIncrement), expand=c(0.06,0.06)) +
+  labs(y=NULL, x="Fold Enrichment") +
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=0, hjust=1, vjust=0.5, size=10),
+        axis.text.x=element_text(size=10),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=1, b=10, l=10, unit="pt"),
+        legend.position="none", legend.justification="center", legend.title.align=0.5, 
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold"),
+        legend.key.size=unit(2,"null")) + 
+  #facet_grid(Set~Assay)+
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), 
+         size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  ggtitle("RNAseq - Genome")
+
+PlotB
+```
+
+```{r RNA-seq SampleXGenome}
+##### RNAseq SampleXGenome 
+DATA<-subset(enrichment_data,Group=="SampleXGenome")
+
+size_circles<-ceiling(max(DATA$Count, na.rm=TRUE)/5)*5
+x_axis_limits <- ceiling(max(DATA$Ratio, na.rm=TRUE)/5)*5
+#y_axis_limits <- 4
+XAxisIncrement<-1
+
+DATA$Description <- as.character(DATA$Description)
+DATA$Description <- unlist(lapply(DATA$Description, function(X) addline_format(X)))
+
+DATA$Description <- factor(DATA$Description, levels=unique(DATA$Description)) # each description is a unique level
+
+## I seems that all of them are significant, so the color needs to be be set to black. If in the future some are not significant, then this will need to be changed
+PlotC<-ggplot(DATA, aes(y=Description, x=Ratio)) +
+  geom_point(shape=21, stroke=1, aes(fill=Class, size=Count)) +
+  geom_hline(yintercept = 1, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 2, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 3, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 4, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 5, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 6, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 7, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 8, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 9, color="black",lty="dashed",lwd=0.75)+
+  geom_hline(yintercept = 10, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Class, size=Count)) +
+  scale_color_manual(values = c("black"))+
+  scale_size_continuous(breaks=seq(0, size_circles, size_circles/5)) +
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="B", discrete=TRUE) +
+  #scale_fill_manual(guide="legend", values=term_class_colors, drop=FALSE) +
+  scale_x_continuous(limits=c(0, x_axis_limits), breaks=seq(0, x_axis_limits, XAxisIncrement), expand=c(0.06,0.06)) +
+  labs(y=NULL, x="Fold Enrichment") +
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=0, hjust=1, vjust=0.5, size=10),
+        axis.text.x=element_text(size=10),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=1, b=10, l=10, unit="pt"),
+        legend.position="none", legend.justification="center", legend.title.align=0.5, 
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold"),
+        legend.key.size=unit(2,"null")) + 
+  #facet_grid(Set~Assay)+
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), 
+         size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  ggtitle("RNAseq - Sample:Genome")
+
+
+PlotC
+```
+
+```{r WGBS}
+DATA<-subset(enrichment_data,Assay=="WGBS")
+
+size_circles<-ceiling(max(DATA$Count, na.rm=TRUE)/5)*5
+x_axis_limits <- ceiling(max(DATA$Ratio, na.rm=TRUE)/5)*5
+#x_axis_limits <- 8
+XAxisIncrement<-2
+
+DATA$Description <- as.character(DATA$Description)
+DATA$Description <- unlist(lapply(DATA$Description, function(X) addline_format(X)))
+
+DATA$Description <- factor(DATA$Description, levels=unique(DATA$Description)) # each description is a unique level
+
+
+PlotD<-ggplot(DATA, aes(y=Description, x=Ratio)) +
+  geom_point(shape=21, stroke=1, aes(fill=Class, size=Count, col=Pass)) +
+#  geom_vline(xintercept = 2, color="black")+
+#  geom_vline(xintercept = 9, color="black")+
+#  geom_vline(xintercept = 10, color="black")+
+#  geom_vline(xintercept = 11, color="black")+
+  geom_point(shape=21, stroke=1, aes(fill=Class, size=Count, col=Pass)) +
+  scale_color_manual(values = c("darkgrey","black"))+
+  scale_size_continuous(breaks=seq(0, size_circles, size_circles/5)) +
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="B", discrete=TRUE) +
+  #scale_fill_manual(guide="legend", values=term_class_colors, drop=FALSE) +
+  scale_x_continuous(limits=c(0, x_axis_limits), breaks=seq(0, x_axis_limits, XAxisIncrement), expand=c(0.06,0.06)) +
+  labs(y=NULL, x="Fold Enrichment") +
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=0, hjust=1, vjust=0.5, size=10),
+        axis.text.x=element_text(size=10),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=1, b=10, l=10, unit="pt"),
+        legend.position="none", legend.justification="center", legend.title.align=0.5, 
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold"),
+        legend.key.size=unit(2,"null")) + 
+  #facet_grid(Set~Assay)+
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), 
+         size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  ggtitle("WGBS")
+
+
+PlotD
+```
+
+```{r combine ORA plots, include=FALSE}
+BlankPlot<-ggplot() + theme_void()
+
+plot_grid(PlotA,PlotB,PlotC,PlotD,ncol = 2,labels = "AUTO")
+
+
+##### Top plot
+### Build layout matrix
+LEN<-1
+WID<-10
+P1<-matrix(rep(1,LEN*WID),ncol = WID)
+
+LEN<-96
+WID<-10
+P2<-matrix(rep(2,LEN*WID),ncol = WID)
+
+LEN<-5
+WID<-10
+P3<-matrix(rep(3,LEN*WID),ncol = WID)
+
+
+
+
+LEN<-8
+WID<-10
+P4<-matrix(rep(4,LEN*WID),ncol = WID)
+
+LEN<-87
+WID<-10
+P5<-matrix(rep(5,LEN*WID),ncol = WID)
+
+LEN<-7
+WID<-10
+P6<-matrix(rep(6,LEN*WID),ncol = WID)
+
+
+Layout<-cbind(rbind(P1,P2,P3),rbind(P4,P5,P6))
+Layout<-t(Layout)
+
+Layout.DF<-Layout
+# convert to data.frame and gather
+Layout.DF <- as.data.frame(Layout.DF)
+Layout.DF$row <- rownames(Layout.DF)
+Layout.DF <- Layout.DF %>% gather(key='column', value='value', -row)
+
+Layout.DF$row<-as.numeric(Layout.DF$row)
+
+Layout.DF$column<-factor(Layout.DF$column,unique(Layout.DF$column),ordered = TRUE)
+
+ggplot(Layout.DF,aes(x=column, y=row, fill=value)) + 
+  geom_raster() +
+  scale_fill_viridis_c()+
+  theme(axis.text.y = element_blank())
+
+
+PlotTop<-grid.arrange(
+  grobs = list(arrangeGrob(BlankPlot,left = textGrob(expression(bold("A")), x = unit(1, "npc"), y = unit(.95, "npc"))),PlotA,BlankPlot,arrangeGrob(BlankPlot,left = textGrob(expression(bold("B")), x = unit(1, "npc"), y = unit(.95, "npc"))),PlotB,BlankPlot),
+  layout_matrix = Layout
+)
+
+
+##### Bottom plot
+### Build layout matrix
+LEN<-8
+WID<-10
+P1<-matrix(rep(1,LEN*WID),ncol = WID)
+
+LEN<-87
+WID<-10
+P2<-matrix(rep(2,LEN*WID),ncol = WID)
+
+LEN<-7
+WID<-10
+P3<-matrix(rep(3,LEN*WID),ncol = WID)
+
+
+
+
+LEN<-4
+WID<-10
+P4<-matrix(rep(4,LEN*WID),ncol = WID)
+
+LEN<-91
+WID<-10
+P5<-matrix(rep(5,LEN*WID),ncol = WID)
+
+LEN<-7
+WID<-10
+P6<-matrix(rep(6,LEN*WID),ncol = WID)
+
+
+Layout<-cbind(rbind(P1,P2,P3),rbind(P4,P5,P6))
+Layout<-t(Layout)
+
+Layout.DF<-Layout
+# convert to data.frame and gather
+Layout.DF <- as.data.frame(Layout.DF)
+Layout.DF$row <- rownames(Layout.DF)
+Layout.DF <- Layout.DF %>% gather(key='column', value='value', -row)
+
+Layout.DF$row<-as.numeric(Layout.DF$row)
+
+Layout.DF$column<-factor(Layout.DF$column,unique(Layout.DF$column),ordered = TRUE)
+
+ggplot(Layout.DF,aes(x=column, y=row, fill=value)) + 
+  geom_raster() +
+  scale_fill_viridis_c()+
+  theme(axis.text.y = element_blank())
+
+
+PlotBottom<-grid.arrange(
+  grobs = list(arrangeGrob(BlankPlot,left = textGrob(expression(bold("C")), x = unit(1, "npc"), y = unit(.95, "npc"))),PlotC,BlankPlot,arrangeGrob(BlankPlot,left = textGrob(expression(bold("D")), x = unit(1, "npc"), y = unit(.95, "npc"))),PlotD,BlankPlot),
+  layout_matrix = Layout
+)
+##### Put it all together
+
+Panel<-plot_grid(PlotTop,PlotBottom,ncol = 2)
+save_plot("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/Manuscripts/BenchmarkingPaper/Figures/Figure_6.png", Panel,base_width=12, base_height=7)
+```
+
+```{r plot panel, fig.width=12, fig.height=7, fig.align='center', fig.cap="ORA results for ATACseq, RNAseq, and WGBS. A) ATACseq, B) RNAseq - Genome, C) RNAseq - Sample:Genome, D) WGBS"}
+Panel
+```
+
+```{r Import and prep for gene upset plot, include=FALSE}
+library(ComplexUpset)
+library(ggplot2)
+packageVersion("ggplot2")
+packageVersion("ComplexUpset")
+GeneList<-read.delim("ListOfGeneSets.txt",header = TRUE)
+GeneList$Set<-factor(GeneList$Set)
+
+AllGenes<-read.delim("../HPRC_General/All_Unique_Ensembl_IDsIn_GencodeV29.txt",header = FALSE)
+colnames(AllGenes)<-"Gene"
+
+GeneList<-rbind(
+  GeneList,
+  data.frame(
+  Gene=AllGenes$Gene,
+  Set=rep("Background",nrow(AllGenes))
+  )
+)
+
+GeneList.Wide<-spread(as.data.frame(as.matrix(table(GeneList))),Set,Freq)
+colnames(GeneList.Wide)[5]<-"RNAseq - Genome"
+colnames(GeneList.Wide)[6]<-"RNAseq - Genome:Sample"
+SetsList<-colnames(GeneList.Wide)[-1]
+GeneList.Wide[,-1]<-GeneList.Wide[,-1]==1
+
+# Filter out genes in sig var bins that aren't genome choice related
+GeneList.Wide.All<-GeneList.Wide
+GeneList.Wide<-subset(GeneList.Wide, ATACseq==TRUE | `RNAseq - Genome`==TRUE | `RNAseq - Genome:Sample`==TRUE | WGBS==TRUE )
+
+
+COLORS<-c("#d4b337",
+          "#bc316b",
+          "#2d5879",
+          "#7e9435",
+          "#4d5a22",
+          "#b8dc37",
+          "#6e1cb7",
+          "grey0"
+)
+```
+
+```{r Gene upset plot generate object, include=FALSE}
+GeneUpsetPlot<-upset(GeneList.Wide,
+      SetsList,
+      name = "Set",
+      stripes = COLORS,
+      keep_empty_groups=TRUE,
+      width_ratio = 0.1,
+      sort_intersections_by=c('degree'),
+      base_annotations=list(
+  'Intersection size'=intersection_size(
+    text=list(
+      vjust=0.5,
+      hjust=-0.15,
+      angle=90
+    )
+  )
+))
+
+ggsave2(filename = "GeneUpsetPlot.png", plot = GeneUpsetPlot, units = "in", height = 7, width = 35)
+```
+
+```{r Gene upset plot complete, fig.width=35, fig.height=7, fig.align='center', fig.cap="Gene set comparison across assays and variants"}
+GeneUpsetPlot
+```
+
+```{r save data and plot for comparison, include=FALSE}
+write.table(x = GeneList.Wide, file = "GeneSetComparisonTable.txt", quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
+write.table(x = GeneList.Wide.All, file = "GeneSetComparisonTable.All.txt", quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
+
+ATACseqOnly<-subset(GeneList.Wide, ATACseq==TRUE)[,c(1,2,3,7,8,9)]
+Upset.ATACseq<-upset(ATACseqOnly,
+      colnames(ATACseqOnly)[-1],
+      name = "Set",
+      set_sizes=FALSE,
+      keep_empty_groups=TRUE,
+      width_ratio = 0.1,
+      sort_intersections_by=c('degree'),
+      base_annotations=list(
+        'Intersection size'=intersection_size(
+          text=list(
+            vjust=0.5,
+            hjust=1.5,
+            angle=90
+          )
+        )
+      )
+    )+ggtitle("ATACseq")
+
+RNAseqGenomeOnly<-subset(GeneList.Wide, `RNAseq - Genome`==TRUE)[,c(1,5,3,4,7,8,9)]
+Upset.RNAseqGenome<-upset(RNAseqGenomeOnly,
+                     colnames(RNAseqGenomeOnly)[-1],
+                     name = "Set",
+                     set_sizes=FALSE,
+                     keep_empty_groups=TRUE,
+                     width_ratio = 0.1,
+                     sort_intersections_by=c('degree'),
+                     base_annotations=list(
+                       'Intersection size'=intersection_size(
+                         text=list(
+                           vjust=0.5,
+                           hjust=1.5,
+                           angle=90
+                         )
+                       )
+                     )
+    )+ggtitle("RNAseq - Genome")
+
+RNAseqGenomeXSampleOnly<-subset(GeneList.Wide, `RNAseq - Genome:Sample`==TRUE)[,c(1,6,3,4,7,8,9)]
+Upset.RNAseqGenomeXSample<-upset(RNAseqGenomeXSampleOnly,
+                          colnames(RNAseqGenomeXSampleOnly)[-1],
+                          name = "Set",
+                          set_sizes=FALSE,
+                          keep_empty_groups=TRUE,
+                          width_ratio = 0.1,
+                          sort_intersections_by=c('degree'),
+                          base_annotations=list(
+                            'Intersection size'=intersection_size(
+                              text=list(
+                                vjust=0.5,
+                                hjust=1.5,
+                                angle=90
+                              )
+                            )
+                          )
+    )+ggtitle("RNAseq - Genome:Sample")
+
+
+WGBSOnly<-subset(GeneList.Wide, WGBS==TRUE)[,c(1,10,3,4,7,8,9)]
+Upset.WGBS<-upset(WGBSOnly,
+                     colnames(WGBSOnly)[-1],
+                     name = "Set",
+                     set_sizes=FALSE,
+                     keep_empty_groups=TRUE,
+                     width_ratio = 0.1,
+                     sort_intersections_by=c('degree'),
+                     base_annotations=list(
+                       'Intersection size'=intersection_size(
+                         text=list(
+                           vjust=0.5,
+                           hjust=1.5,
+                           angle=90
+                         )
+                       )
+                     )
+    )+ggtitle("WGBS")
+
+library(patchwork)
+UpsetPanel<-plot_grid(
+  Upset.ATACseq+plot_annotation(title = "A"),
+  Upset.WGBS+plot_annotation(title = "B"),
+  Upset.RNAseqGenome+plot_annotation(title = "C"),
+  Upset.RNAseqGenomeXSample+plot_annotation(title = "D"),
+  nrow=2
+)
+
+ggsave2(filename = "GeneSetVersusVars_UpsetPanel.png",plot = UpsetPanel,units = "in", width = 11, height = 8)
+```
+
+```{r Gene upset plots assay versus vars, fig.width=11, fig.height=8, fig.align='center', fig.cap="Gene set comparison across assays and variants"}
+UpsetPanel
+```
+
+```{r Compare sets ignoring variants, include=FALSE}
+NoVarsGeneUpsetPlot<-upset(GeneList.Wide[,-c(3,4,7,8,9)],
+                     SetsList[-c(2,3,6,7,8)],
+                     name = "Set",
+                     stripes = COLORS[c(1,2,3,7,8)],
+                     keep_empty_groups=TRUE,
+                     set_sizes=FALSE,
+                     width_ratio = 0.1,
+                     sort_intersections_by=c('degree'),
+                     base_annotations=list(
+                       'Intersection size'=intersection_size(
+                         text=list(
+                           vjust=0.5,
+                           hjust=-0.15,
+                           angle=90
+                         )
+                       )
+                     ))+CS.THEME
+
+ggsave2(filename = "GeneUpsetPlot_NoVars.png", plot = NoVarsGeneUpsetPlot, units = "in", height = 4, width = 6)
+ggsave2(filename = "GeneUpsetPlot_NoVars.svg", plot = NoVarsGeneUpsetPlot, height = 4, width = 6)
+```
+
+```{r Gene upset plot by assay, fig.width=6, fig.height=4, fig.align='center', fig.cap="Gene set comparison across assays"}
+NoVarsGeneUpsetPlot
+```
+
+```{r load HCL data}
+ATAC_HCL<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/ATACseq_HCL/enrichment_results_wg_result1719895966.txt", header = TRUE, sep = "\t")
+RNAseq_Genome_HCL<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/RNAseq_Genome_HCL/enrichment_results_wg_result1719895831.txt", header = TRUE, sep = "\t")
+RNAseq_SampleXGenome_HCL<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/RNAseq_SampleXGenome_HCL/enrichment_results_wg_result1719895900.txt", header = TRUE, sep = "\t")
+WGBS_HCL<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/WGBS_HCL/enrichment_results_wg_result1719896008.txt", header = TRUE, sep = "\t")
+
+ATAC_HCL$Group<-"ATAC-seq"
+RNAseq_Genome_HCL$Group<-"RNA-seq Genome"
+RNAseq_SampleXGenome_HCL$Group<-"RNA-seq Sample:Genome"
+WGBS_HCL$Group<-"WGBS"
+
+Combined_ORA_HCL<-rbind(ATAC_HCL,RNAseq_Genome_HCL,RNAseq_SampleXGenome_HCL,WGBS_HCL)
+```
+
+```{r order HCL data, include=FALSE}
+# Add line breaks to descriptions
+Combined_ORA_HCL$geneSet <- unlist(lapply(Combined_ORA_HCL$geneSet, function(X) addline_format(X)))
+
+##### Spot fix names
+Combined_ORA_HCL$geneSet[Combined_ORA_HCL$geneSet=="Antigen presenting cell ((RPS\nhigh))"]<-"Antigen presenting cell\n (RPS high)"
+Combined_ORA_HCL$geneSet[Combined_ORA_HCL$geneSet=="Immature sertoli cell ((Pre-Sertoli\ncell))"]<-"Immature sertoli cell\n(Pre-Sertoli cell)"
+
+# Step 1: Combine UserIDs and replace ; with space
+UserIDs_HCL<-unlist(lapply(Combined_ORA_HCL$userId, function(X) paste(strsplit(X, split = ";")[[1]],collapse = " ")))
+
+# Step 2: Tokenize the UserIDs
+tokens <- word_tokenizer(tolower(UserIDs_HCL))
+it <- itoken(tokens)
+
+# Step 3: Create Vocabulary and Vectorizer
+vocab <- create_vocabulary(it) %>%
+  prune_vocabulary(term_count_min = 1)  # Adjust term_count_min as needed
+vectorizer <- vocab_vectorizer(vocab)
+
+# Step 4: Create the Term Co-occurrence Matrix (TCM)
+tcm <- create_tcm(it, vectorizer, skip_grams_window = 5)
+
+# Step 5: Train the GlobalVectors Model
+wv_model <- GlobalVectors$new(rank = 32, x_max = 10)
+wv_model$fit_transform(tcm, n_iter = 20, convergence_tol = 0.01, shuffle = TRUE)
+
+# Step 6: Access and Use Word Vectors
+word_vectors <- wv_model$components
+
+# Define a function to generate a term vector
+makeTermVector<-function(USERIDS){
+  TermIndexes<-match(tolower(strsplit(USERIDS, " ")[[1]]), vocab$term)
+  rowSums(word_vectors[, TermIndexes , drop = FALSE])
+}
+
+# Step 7: Generate vectors for each user ID
+UserIDs_HCL.Vectors<-lapply(UserIDs_HCL, function(X) makeTermVector(X) ) %>% bind_cols() %>% as.data.frame()
+colnames(UserIDs_HCL.Vectors)<-Combined_ORA_HCL$geneSet
+
+# Step 8: 
+UserIDs_HCL.Vectors.merged<-NULL
+for (ID in unique(colnames(UserIDs_HCL.Vectors)) ){
+  # If has one, just keep it, if not take the average
+  if(sum(colnames(UserIDs_HCL.Vectors) %in% ID) == 1){
+    UserIDs_HCL.Vectors.merged<-cbind(UserIDs_HCL.Vectors.merged, UserIDs_HCL.Vectors[,colnames(UserIDs_HCL.Vectors) %in% ID])
+  }else{
+    UserIDs_HCL.Vectors.merged<-cbind(UserIDs_HCL.Vectors.merged,apply(UserIDs_HCL.Vectors[,colnames(UserIDs_HCL.Vectors) %in% ID], 1, mean))
+  }
+}
+
+colnames(UserIDs_HCL.Vectors.merged)<-unique(colnames(UserIDs_HCL.Vectors))
+
+# Step 9: Visualize the Vectors
+# Generate UMAP
+UserIDs_HCL.umap<-umap(t(UserIDs_HCL.Vectors.merged))
+
+# Create a data frame for ggplot
+umap_df <- as.data.frame(UserIDs_HCL.umap$layout)
+umap_df$geneSet <- colnames(UserIDs_HCL.Vectors.merged)
+
+# with small label for the gene set
+umap_plot<-ggplot(umap_df, aes(x = V1, y = V2)) +
+  geom_point() +
+  geom_text(aes(label = geneSet), size = 2, nudge_y = 0.1) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(title = "UMAP of HCL gene sets")
+
+UserIDs_HCL.Vectors.merged.hclust<-hclust(dist(t(as.matrix(UserIDs_HCL.Vectors.merged))))
+HCL.order<-UserIDs_HCL.Vectors.merged.hclust$labels[UserIDs_HCL.Vectors.merged.hclust$order]
+```
+```{r plot HCL umap, include=TRUE}
+umap_plot
+```
+
+```{r format data, include=FALSE}
+# Remove unneeded columns
+Combined_ORA_HCL<-Combined_ORA_HCL[,c(-2, -4, -5, -9, -10)]
+
+#  Tag by significance
+Combined_ORA_HCL$Significance <- ifelse(Combined_ORA_HCL$FDR <= 0.05, "FDR<=0.05", "FDR>0.05")
+
+# rank by fold enrichment
+Combined_ORA_HCL <- Combined_ORA_HCL[order(Combined_ORA_HCL$enrichmentRatio),]
+
+# round Count data to zero decimals
+Combined_ORA_HCL$size <- round(Combined_ORA_HCL$size, 0)
+
+### format columns as factors for precise plotting
+## reorder the data
+Combined_ORA_HCL$geneSet<-factor(Combined_ORA_HCL$geneSet, levels=HCL.order)
+
+FactorList<-c(
+  "ATAC-seq",
+  "RNA-seq Genome",
+  "RNA-seq Sample:Genome",
+  "WGBS"
+)
+
+# Any missing factors will be returned by the following:
+Combined_ORA_HCL$Group[!(Combined_ORA_HCL$Group %in% FactorList)]
+
+# Order the factors
+Combined_ORA_HCL$Group<-factor(Combined_ORA_HCL$Group,levels=FactorList, ordered = TRUE)
+```
+
+```{r generate and plot Human Cell Landscape enrichment - Full, include=TRUE, fig.height=8, fig.width=4}
+size_circles_HCL<-ceiling(max(Combined_ORA_HCL$size, na.rm=TRUE)/5)*5
+
+SignificantLinesHCL<-c(1:nrow(Combined_ORA_HCL))[match(Combined_ORA_HCL$geneSet[as.numeric(factor(Combined_ORA_HCL$Significance))==1],HCL.order)]
+
+Plot_HCL_Full<-ggplot(Combined_ORA_HCL, aes(x=Group,y=geneSet))+
+  geom_hline(yintercept = SignificantLinesHCL, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Group, size=size, col=Significance))+
+  scale_color_manual(values = c("black","darkgrey"))+
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="turbo", discrete=TRUE) +
+  scale_size_continuous(breaks=seq(0, size_circles_HCL, size_circles_HCL/5)) +
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  CS.THEME+
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=0, hjust=1, vjust=0.5, size=10),
+        axis.text.x=element_text(size=10, angle = 30, hjust = 1),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=10, b=10, l=1, unit="pt"),
+        legend.position="none", legend.justification="center",
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold", hjust = 0.5),
+        legend.key.size=unit(2,"null"))+
+        xlab("Affected Assay")+
+        ylab("Cell-type")
+
+ggsave2(filename = "Plot_HCL_Full.png", plot = Plot_HCL_Full, width = 4, height = 8, dpi = 300, units = "in")
+
+Plot_HCL_Full
+```
+
+

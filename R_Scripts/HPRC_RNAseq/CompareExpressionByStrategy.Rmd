@@ -1,0 +1,1380 @@
+---
+title: "RNA-seq Compare expression estimates"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/")
+
+set.seed(0)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(cowplot)
+library(edgeR)
+library(MASS)
+library(qvalue)
+library(factoextra)
+library(tidyr)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r Import Short reads}
+## Kallisto
+# hg38 gencode v29
+HG00621_A_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG00621_1.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG00741_A_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG00741_1.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01952_A_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG01952_1.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01978_A_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG01978_1.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG03516_A_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG03516_1.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+
+HG00621_B_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG00621_2.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG00741_B_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG00741_2.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01952_B_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG01952_2.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01978_B_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG01978_2.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG03516_B_hg38_gencodev29_Kallisto<-read.delim("bulk_rna/HG03516_2.GRCh38.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+
+HG00621_A_hg38_gencodev29_Kallisto$Sample<-"HG00621"
+HG00741_A_hg38_gencodev29_Kallisto$Sample<-"HG00741"
+HG01952_A_hg38_gencodev29_Kallisto$Sample<-"HG01952"
+HG01978_A_hg38_gencodev29_Kallisto$Sample<-"HG01978"
+HG03516_A_hg38_gencodev29_Kallisto$Sample<-"HG03516"
+HG00621_B_hg38_gencodev29_Kallisto$Sample<-"HG00621"
+HG00741_B_hg38_gencodev29_Kallisto$Sample<-"HG00741"
+HG01952_B_hg38_gencodev29_Kallisto$Sample<-"HG01952"
+HG01978_B_hg38_gencodev29_Kallisto$Sample<-"HG01978"
+HG03516_B_hg38_gencodev29_Kallisto$Sample<-"HG03516"
+
+HG00621_A_hg38_gencodev29_Kallisto$Replicate<-"A"
+HG00741_A_hg38_gencodev29_Kallisto$Replicate<-"A"
+HG01952_A_hg38_gencodev29_Kallisto$Replicate<-"A"
+HG01978_A_hg38_gencodev29_Kallisto$Replicate<-"A"
+HG03516_A_hg38_gencodev29_Kallisto$Replicate<-"A"
+HG00621_B_hg38_gencodev29_Kallisto$Replicate<-"B"
+HG00741_B_hg38_gencodev29_Kallisto$Replicate<-"B"
+HG01952_B_hg38_gencodev29_Kallisto$Replicate<-"B"
+HG01978_B_hg38_gencodev29_Kallisto$Replicate<-"B"
+HG03516_B_hg38_gencodev29_Kallisto$Replicate<-"B"
+
+HG00621_A_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG00741_A_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG01952_A_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG01978_A_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG03516_A_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG00621_B_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG00741_B_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG01952_B_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG01978_B_hg38_gencodev29_Kallisto$Genome<-"hg38"
+HG03516_B_hg38_gencodev29_Kallisto$Genome<-"hg38"
+
+HG00621_A_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00741_A_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01952_A_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01978_A_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG03516_A_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00621_B_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00741_B_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01952_B_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01978_B_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG03516_B_hg38_gencodev29_Kallisto$Annotation<-"gencodev29"
+
+
+# CHM13 LiftOff gencode v29
+HG00621_A_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG00621_1.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG00741_A_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG00741_1.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01952_A_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG01952_1.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01978_A_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG01978_1.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG03516_A_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG03516_1.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+
+HG00621_B_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG00621_2.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG00741_B_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG00741_2.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01952_B_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG01952_2.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01978_B_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG01978_2.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG03516_B_CHM13_LiftOff_Kallisto<-read.delim("bulk_rna/HG03516_2.CHM13.liftoff/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+
+HG00621_A_CHM13_LiftOff_Kallisto$Sample<-"HG00621"
+HG00741_A_CHM13_LiftOff_Kallisto$Sample<-"HG00741"
+HG01952_A_CHM13_LiftOff_Kallisto$Sample<-"HG01952"
+HG01978_A_CHM13_LiftOff_Kallisto$Sample<-"HG01978"
+HG03516_A_CHM13_LiftOff_Kallisto$Sample<-"HG03516"
+HG00621_B_CHM13_LiftOff_Kallisto$Sample<-"HG00621"
+HG00741_B_CHM13_LiftOff_Kallisto$Sample<-"HG00741"
+HG01952_B_CHM13_LiftOff_Kallisto$Sample<-"HG01952"
+HG01978_B_CHM13_LiftOff_Kallisto$Sample<-"HG01978"
+HG03516_B_CHM13_LiftOff_Kallisto$Sample<-"HG03516"
+
+HG00621_A_CHM13_LiftOff_Kallisto$Replicate<-"A"
+HG00741_A_CHM13_LiftOff_Kallisto$Replicate<-"A"
+HG01952_A_CHM13_LiftOff_Kallisto$Replicate<-"A"
+HG01978_A_CHM13_LiftOff_Kallisto$Replicate<-"A"
+HG03516_A_CHM13_LiftOff_Kallisto$Replicate<-"A"
+HG00621_B_CHM13_LiftOff_Kallisto$Replicate<-"B"
+HG00741_B_CHM13_LiftOff_Kallisto$Replicate<-"B"
+HG01952_B_CHM13_LiftOff_Kallisto$Replicate<-"B"
+HG01978_B_CHM13_LiftOff_Kallisto$Replicate<-"B"
+HG03516_B_CHM13_LiftOff_Kallisto$Replicate<-"B"
+
+HG00621_A_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG00741_A_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG01952_A_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG01978_A_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG03516_A_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG00621_B_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG00741_B_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG01952_B_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG01978_B_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+HG03516_B_CHM13_LiftOff_Kallisto$Genome<-"CHM13"
+
+HG00621_A_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG00741_A_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG01952_A_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG01978_A_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG03516_A_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG00621_B_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG00741_B_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG01952_B_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG01978_B_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+HG03516_B_CHM13_LiftOff_Kallisto$Annotation<-"LiftOff"
+
+
+# Maternal LiftOff gencode v29
+HG00621_A_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG00621_1.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG00741_A_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG00741_1.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01952_A_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG01952_1.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01978_A_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG01978_1.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG03516_A_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG03516_1.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+
+HG00621_B_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG00621_2.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG00741_B_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG00741_2.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01952_B_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG01952_2.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01978_B_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG01978_2.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG03516_B_Maternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG03516_2.mat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+
+
+HG00621_A_Maternal_gencodev29_Kallisto$Sample<-"HG00621"
+HG00741_A_Maternal_gencodev29_Kallisto$Sample<-"HG00741"
+HG01952_A_Maternal_gencodev29_Kallisto$Sample<-"HG01952"
+HG01978_A_Maternal_gencodev29_Kallisto$Sample<-"HG01978"
+HG03516_A_Maternal_gencodev29_Kallisto$Sample<-"HG03516"
+HG00621_B_Maternal_gencodev29_Kallisto$Sample<-"HG00621"
+HG00741_B_Maternal_gencodev29_Kallisto$Sample<-"HG00741"
+HG01952_B_Maternal_gencodev29_Kallisto$Sample<-"HG01952"
+HG01978_B_Maternal_gencodev29_Kallisto$Sample<-"HG01978"
+HG03516_B_Maternal_gencodev29_Kallisto$Sample<-"HG03516"
+
+HG00621_A_Maternal_gencodev29_Kallisto$Replicate<-"A"
+HG00741_A_Maternal_gencodev29_Kallisto$Replicate<-"A"
+HG01952_A_Maternal_gencodev29_Kallisto$Replicate<-"A"
+HG01978_A_Maternal_gencodev29_Kallisto$Replicate<-"A"
+HG03516_A_Maternal_gencodev29_Kallisto$Replicate<-"A"
+HG00621_B_Maternal_gencodev29_Kallisto$Replicate<-"B"
+HG00741_B_Maternal_gencodev29_Kallisto$Replicate<-"B"
+HG01952_B_Maternal_gencodev29_Kallisto$Replicate<-"B"
+HG01978_B_Maternal_gencodev29_Kallisto$Replicate<-"B"
+HG03516_B_Maternal_gencodev29_Kallisto$Replicate<-"B"
+
+HG00621_A_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG00741_A_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG01952_A_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG01978_A_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG03516_A_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG00621_B_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG00741_B_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG01952_B_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG01978_B_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+HG03516_B_Maternal_gencodev29_Kallisto$Genome<-"Maternal"
+
+HG00621_A_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00741_A_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01952_A_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01978_A_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG03516_A_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00621_B_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00741_B_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01952_B_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01978_B_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG03516_B_Maternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+
+# Paternal LiftOff gencode v29
+HG00621_A_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG00621_1.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG00741_A_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG00741_1.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01952_A_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG01952_1.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01978_A_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG01978_1.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG03516_A_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG03516_1.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+
+HG00621_B_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG00621_2.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG00741_B_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG00741_2.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01952_B_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG01952_2.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG01978_B_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG01978_2.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+HG03516_B_Paternal_gencodev29_Kallisto<-read.delim("bulk_rna/HG03516_2.pat.gencode_v29/kallisto/rep1PE_unstranded_abundance.tsv", header = TRUE)
+
+
+HG00621_A_Paternal_gencodev29_Kallisto$Sample<-"HG00621"
+HG00741_A_Paternal_gencodev29_Kallisto$Sample<-"HG00741"
+HG01952_A_Paternal_gencodev29_Kallisto$Sample<-"HG01952"
+HG01978_A_Paternal_gencodev29_Kallisto$Sample<-"HG01978"
+HG03516_A_Paternal_gencodev29_Kallisto$Sample<-"HG03516"
+HG00621_B_Paternal_gencodev29_Kallisto$Sample<-"HG00621"
+HG00741_B_Paternal_gencodev29_Kallisto$Sample<-"HG00741"
+HG01952_B_Paternal_gencodev29_Kallisto$Sample<-"HG01952"
+HG01978_B_Paternal_gencodev29_Kallisto$Sample<-"HG01978"
+HG03516_B_Paternal_gencodev29_Kallisto$Sample<-"HG03516"
+
+HG00621_A_Paternal_gencodev29_Kallisto$Replicate<-"A"
+HG00741_A_Paternal_gencodev29_Kallisto$Replicate<-"A"
+HG01952_A_Paternal_gencodev29_Kallisto$Replicate<-"A"
+HG01978_A_Paternal_gencodev29_Kallisto$Replicate<-"A"
+HG03516_A_Paternal_gencodev29_Kallisto$Replicate<-"A"
+HG00621_B_Paternal_gencodev29_Kallisto$Replicate<-"B"
+HG00741_B_Paternal_gencodev29_Kallisto$Replicate<-"B"
+HG01952_B_Paternal_gencodev29_Kallisto$Replicate<-"B"
+HG01978_B_Paternal_gencodev29_Kallisto$Replicate<-"B"
+HG03516_B_Paternal_gencodev29_Kallisto$Replicate<-"B"
+
+HG00621_A_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG00741_A_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG01952_A_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG01978_A_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG03516_A_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG00621_B_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG00741_B_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG01952_B_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG01978_B_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+HG03516_B_Paternal_gencodev29_Kallisto$Genome<-"Paternal"
+
+HG00621_A_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00741_A_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01952_A_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01978_A_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG03516_A_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00621_B_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG00741_B_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01952_B_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG01978_B_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+HG03516_B_Paternal_gencodev29_Kallisto$Annotation<-"gencodev29"
+
+Combined.Long_Kallisto<-bind_rows(
+  HG00621_A_hg38_gencodev29_Kallisto,
+  HG00741_A_hg38_gencodev29_Kallisto,
+  HG01952_A_hg38_gencodev29_Kallisto,
+  HG01978_A_hg38_gencodev29_Kallisto,
+  HG03516_A_hg38_gencodev29_Kallisto,
+  HG00621_B_hg38_gencodev29_Kallisto,
+  HG00741_B_hg38_gencodev29_Kallisto,
+  HG01952_B_hg38_gencodev29_Kallisto,
+  HG01978_B_hg38_gencodev29_Kallisto,
+  HG03516_B_hg38_gencodev29_Kallisto,
+  HG00621_A_CHM13_LiftOff_Kallisto,
+  HG00741_A_CHM13_LiftOff_Kallisto,
+  HG01952_A_CHM13_LiftOff_Kallisto,
+  HG01978_A_CHM13_LiftOff_Kallisto,
+  HG03516_A_CHM13_LiftOff_Kallisto,
+  HG00621_B_CHM13_LiftOff_Kallisto,
+  HG00741_B_CHM13_LiftOff_Kallisto,
+  HG01952_B_CHM13_LiftOff_Kallisto,
+  HG01978_B_CHM13_LiftOff_Kallisto,
+  HG03516_B_CHM13_LiftOff_Kallisto,
+  HG00621_A_Maternal_gencodev29_Kallisto,
+  HG00741_A_Maternal_gencodev29_Kallisto,
+  HG01952_A_Maternal_gencodev29_Kallisto,
+  HG01978_A_Maternal_gencodev29_Kallisto,
+  HG03516_A_Maternal_gencodev29_Kallisto,
+  HG00621_B_Maternal_gencodev29_Kallisto,
+  HG00741_B_Maternal_gencodev29_Kallisto,
+  HG01952_B_Maternal_gencodev29_Kallisto,
+  HG01978_B_Maternal_gencodev29_Kallisto,
+  HG03516_B_Maternal_gencodev29_Kallisto,
+  HG00621_A_Paternal_gencodev29_Kallisto,
+  HG00741_A_Paternal_gencodev29_Kallisto,
+  HG01952_A_Paternal_gencodev29_Kallisto,
+  HG01978_A_Paternal_gencodev29_Kallisto,
+  HG03516_A_Paternal_gencodev29_Kallisto,
+  HG00621_B_Paternal_gencodev29_Kallisto,
+  HG00741_B_Paternal_gencodev29_Kallisto,
+  HG01952_B_Paternal_gencodev29_Kallisto,
+  HG01978_B_Paternal_gencodev29_Kallisto,
+  HG03516_B_Paternal_gencodev29_Kallisto
+)
+
+Combined.Long_Kallisto$Run<-paste(Combined.Long_Kallisto$Sample,Combined.Long_Kallisto$Replicate,Combined.Long_Kallisto$Genome)
+
+## RSEM
+# hg38 gencode v29
+HG00621_A_hg38_gencodev29<-read.delim("bulk_rna/HG00621_1.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG00741_A_hg38_gencodev29<-read.delim("bulk_rna/HG00741_1.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG01952_A_hg38_gencodev29<-read.delim("bulk_rna/HG01952_1.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG01978_A_hg38_gencodev29<-read.delim("bulk_rna/HG01978_1.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG03516_A_hg38_gencodev29<-read.delim("bulk_rna/HG03516_1.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+
+HG00621_B_hg38_gencodev29<-read.delim("bulk_rna/HG00621_2.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG00741_B_hg38_gencodev29<-read.delim("bulk_rna/HG00741_2.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG01952_B_hg38_gencodev29<-read.delim("bulk_rna/HG01952_2.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG01978_B_hg38_gencodev29<-read.delim("bulk_rna/HG01978_2.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG03516_B_hg38_gencodev29<-read.delim("bulk_rna/HG03516_2.GRCh38.gencode_v29/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+
+HG00621_A_hg38_gencodev29$Sample<-"HG00621"
+HG00741_A_hg38_gencodev29$Sample<-"HG00741"
+HG01952_A_hg38_gencodev29$Sample<-"HG01952"
+HG01978_A_hg38_gencodev29$Sample<-"HG01978"
+HG03516_A_hg38_gencodev29$Sample<-"HG03516"
+HG00621_B_hg38_gencodev29$Sample<-"HG00621"
+HG00741_B_hg38_gencodev29$Sample<-"HG00741"
+HG01952_B_hg38_gencodev29$Sample<-"HG01952"
+HG01978_B_hg38_gencodev29$Sample<-"HG01978"
+HG03516_B_hg38_gencodev29$Sample<-"HG03516"
+
+HG00621_A_hg38_gencodev29$Replicate<-"A"
+HG00741_A_hg38_gencodev29$Replicate<-"A"
+HG01952_A_hg38_gencodev29$Replicate<-"A"
+HG01978_A_hg38_gencodev29$Replicate<-"A"
+HG03516_A_hg38_gencodev29$Replicate<-"A"
+HG00621_B_hg38_gencodev29$Replicate<-"B"
+HG00741_B_hg38_gencodev29$Replicate<-"B"
+HG01952_B_hg38_gencodev29$Replicate<-"B"
+HG01978_B_hg38_gencodev29$Replicate<-"B"
+HG03516_B_hg38_gencodev29$Replicate<-"B"
+
+HG00621_A_hg38_gencodev29$Genome<-"hg38"
+HG00741_A_hg38_gencodev29$Genome<-"hg38"
+HG01952_A_hg38_gencodev29$Genome<-"hg38"
+HG01978_A_hg38_gencodev29$Genome<-"hg38"
+HG03516_A_hg38_gencodev29$Genome<-"hg38"
+HG00621_B_hg38_gencodev29$Genome<-"hg38"
+HG00741_B_hg38_gencodev29$Genome<-"hg38"
+HG01952_B_hg38_gencodev29$Genome<-"hg38"
+HG01978_B_hg38_gencodev29$Genome<-"hg38"
+HG03516_B_hg38_gencodev29$Genome<-"hg38"
+
+HG00621_A_hg38_gencodev29$Annotation<-"gencodev29"
+HG00741_A_hg38_gencodev29$Annotation<-"gencodev29"
+HG01952_A_hg38_gencodev29$Annotation<-"gencodev29"
+HG01978_A_hg38_gencodev29$Annotation<-"gencodev29"
+HG03516_A_hg38_gencodev29$Annotation<-"gencodev29"
+HG00621_B_hg38_gencodev29$Annotation<-"gencodev29"
+HG00741_B_hg38_gencodev29$Annotation<-"gencodev29"
+HG01952_B_hg38_gencodev29$Annotation<-"gencodev29"
+HG01978_B_hg38_gencodev29$Annotation<-"gencodev29"
+HG03516_B_hg38_gencodev29$Annotation<-"gencodev29"
+
+
+
+# CHM13 LiftOff gencode v29
+HG00621_A_CHM13_LiftOff<-read.delim("bulk_rna/HG00621_1.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG00741_A_CHM13_LiftOff<-read.delim("bulk_rna/HG00741_1.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG01952_A_CHM13_LiftOff<-read.delim("bulk_rna/HG01952_1.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG01978_A_CHM13_LiftOff<-read.delim("bulk_rna/HG01978_1.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG03516_A_CHM13_LiftOff<-read.delim("bulk_rna/HG03516_1.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+
+HG00621_B_CHM13_LiftOff<-read.delim("bulk_rna/HG00621_2.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG00741_B_CHM13_LiftOff<-read.delim("bulk_rna/HG00741_2.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG01952_B_CHM13_LiftOff<-read.delim("bulk_rna/HG01952_2.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG01978_B_CHM13_LiftOff<-read.delim("bulk_rna/HG01978_2.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+HG03516_B_CHM13_LiftOff<-read.delim("bulk_rna/HG03516_2.CHM13.liftoff/rsem_quant/rep1PE_unstranded_anno_rsem.isoforms.results", header = TRUE)
+
+HG00621_A_CHM13_LiftOff$Sample<-"HG00621"
+HG00741_A_CHM13_LiftOff$Sample<-"HG00741"
+HG01952_A_CHM13_LiftOff$Sample<-"HG01952"
+HG01978_A_CHM13_LiftOff$Sample<-"HG01978"
+HG03516_A_CHM13_LiftOff$Sample<-"HG03516"
+HG00621_B_CHM13_LiftOff$Sample<-"HG00621"
+HG00741_B_CHM13_LiftOff$Sample<-"HG00741"
+HG01952_B_CHM13_LiftOff$Sample<-"HG01952"
+HG01978_B_CHM13_LiftOff$Sample<-"HG01978"
+HG03516_B_CHM13_LiftOff$Sample<-"HG03516"
+
+HG00621_A_CHM13_LiftOff$Replicate<-"A"
+HG00741_A_CHM13_LiftOff$Replicate<-"A"
+HG01952_A_CHM13_LiftOff$Replicate<-"A"
+HG01978_A_CHM13_LiftOff$Replicate<-"A"
+HG03516_A_CHM13_LiftOff$Replicate<-"A"
+HG00621_B_CHM13_LiftOff$Replicate<-"B"
+HG00741_B_CHM13_LiftOff$Replicate<-"B"
+HG01952_B_CHM13_LiftOff$Replicate<-"B"
+HG01978_B_CHM13_LiftOff$Replicate<-"B"
+HG03516_B_CHM13_LiftOff$Replicate<-"B"
+
+HG00621_A_CHM13_LiftOff$Genome<-"CHM13"
+HG00741_A_CHM13_LiftOff$Genome<-"CHM13"
+HG01952_A_CHM13_LiftOff$Genome<-"CHM13"
+HG01978_A_CHM13_LiftOff$Genome<-"CHM13"
+HG03516_A_CHM13_LiftOff$Genome<-"CHM13"
+HG00621_B_CHM13_LiftOff$Genome<-"CHM13"
+HG00741_B_CHM13_LiftOff$Genome<-"CHM13"
+HG01952_B_CHM13_LiftOff$Genome<-"CHM13"
+HG01978_B_CHM13_LiftOff$Genome<-"CHM13"
+HG03516_B_CHM13_LiftOff$Genome<-"CHM13"
+
+HG00621_A_CHM13_LiftOff$Annotation<-"LiftOff"
+HG00741_A_CHM13_LiftOff$Annotation<-"LiftOff"
+HG01952_A_CHM13_LiftOff$Annotation<-"LiftOff"
+HG01978_A_CHM13_LiftOff$Annotation<-"LiftOff"
+HG03516_A_CHM13_LiftOff$Annotation<-"LiftOff"
+HG00621_B_CHM13_LiftOff$Annotation<-"LiftOff"
+HG00741_B_CHM13_LiftOff$Annotation<-"LiftOff"
+HG01952_B_CHM13_LiftOff$Annotation<-"LiftOff"
+HG01978_B_CHM13_LiftOff$Annotation<-"LiftOff"
+HG03516_B_CHM13_LiftOff$Annotation<-"LiftOff"
+
+
+
+
+
+# Maternal LiftOff gencode v29
+HG00621_A_Maternal_gencodev29<-read.delim("bulk_rna/HG00621_1.mat.gencode_v29/rsem_quant/rep1HG00621_anno_rsem.isoforms.results", header = TRUE)
+HG00741_A_Maternal_gencodev29<-read.delim("bulk_rna/HG00741_1.mat.gencode_v29/rsem_quant/rep1HG00741_anno_rsem.isoforms.results", header = TRUE)
+HG01952_A_Maternal_gencodev29<-read.delim("bulk_rna/HG01952_1.HG01952_mat.gencode_v29/rsem_quant/rep1HG01952_1_anno_rsem.isoforms.results", header = TRUE)
+HG01978_A_Maternal_gencodev29<-read.delim("bulk_rna/HG01978_1.mat.gencode_v29/rsem_quant/rep1HG01978_anno_rsem.isoforms.results", header = TRUE)
+HG03516_A_Maternal_gencodev29<-read.delim("bulk_rna/HG03516_1.mat.gencode_v29/rsem_quant/rep1HG03516_anno_rsem.isoforms.results", header = TRUE)
+
+HG00621_B_Maternal_gencodev29<-read.delim("bulk_rna/HG00621_2.mat.gencode_v29/rsem_quant/rep1HG00621_anno_rsem.isoforms.results", header = TRUE)
+HG00741_B_Maternal_gencodev29<-read.delim("bulk_rna/HG00741_2.mat.gencode_v29/rsem_quant/rep1HG00741_anno_rsem.isoforms.results", header = TRUE)
+HG01952_B_Maternal_gencodev29<-read.delim("bulk_rna/HG01952_2.mat.gencode_v29/rsem_quant/rep1HG01952_anno_rsem.isoforms.results", header = TRUE)
+HG01978_B_Maternal_gencodev29<-read.delim("bulk_rna/HG01978_2.mat.gencode_v29/rsem_quant/rep1HG01978_anno_rsem.isoforms.results", header = TRUE)
+HG03516_B_Maternal_gencodev29<-read.delim("bulk_rna/HG03516_2.mat.gencode_v29/rsem_quant/rep1HG03516_anno_rsem.isoforms.results", header = TRUE)
+
+
+HG00621_A_Maternal_gencodev29$Sample<-"HG00621"
+HG00741_A_Maternal_gencodev29$Sample<-"HG00741"
+HG01952_A_Maternal_gencodev29$Sample<-"HG01952"
+HG01978_A_Maternal_gencodev29$Sample<-"HG01978"
+HG03516_A_Maternal_gencodev29$Sample<-"HG03516"
+HG00621_B_Maternal_gencodev29$Sample<-"HG00621"
+HG00741_B_Maternal_gencodev29$Sample<-"HG00741"
+HG01952_B_Maternal_gencodev29$Sample<-"HG01952"
+HG01978_B_Maternal_gencodev29$Sample<-"HG01978"
+HG03516_B_Maternal_gencodev29$Sample<-"HG03516"
+
+HG00621_A_Maternal_gencodev29$Replicate<-"A"
+HG00741_A_Maternal_gencodev29$Replicate<-"A"
+HG01952_A_Maternal_gencodev29$Replicate<-"A"
+HG01978_A_Maternal_gencodev29$Replicate<-"A"
+HG03516_A_Maternal_gencodev29$Replicate<-"A"
+HG00621_B_Maternal_gencodev29$Replicate<-"B"
+HG00741_B_Maternal_gencodev29$Replicate<-"B"
+HG01952_B_Maternal_gencodev29$Replicate<-"B"
+HG01978_B_Maternal_gencodev29$Replicate<-"B"
+HG03516_B_Maternal_gencodev29$Replicate<-"B"
+
+HG00621_A_Maternal_gencodev29$Genome<-"Maternal"
+HG00741_A_Maternal_gencodev29$Genome<-"Maternal"
+HG01952_A_Maternal_gencodev29$Genome<-"Maternal"
+HG01978_A_Maternal_gencodev29$Genome<-"Maternal"
+HG03516_A_Maternal_gencodev29$Genome<-"Maternal"
+HG00621_B_Maternal_gencodev29$Genome<-"Maternal"
+HG00741_B_Maternal_gencodev29$Genome<-"Maternal"
+HG01952_B_Maternal_gencodev29$Genome<-"Maternal"
+HG01978_B_Maternal_gencodev29$Genome<-"Maternal"
+HG03516_B_Maternal_gencodev29$Genome<-"Maternal"
+
+
+HG00621_A_Maternal_gencodev29$Annotation<-"gencodev29"
+HG00741_A_Maternal_gencodev29$Annotation<-"gencodev29"
+HG01952_A_Maternal_gencodev29$Annotation<-"gencodev29"
+HG01978_A_Maternal_gencodev29$Annotation<-"gencodev29"
+HG03516_A_Maternal_gencodev29$Annotation<-"gencodev29"
+HG00621_B_Maternal_gencodev29$Annotation<-"gencodev29"
+HG00741_B_Maternal_gencodev29$Annotation<-"gencodev29"
+HG01952_B_Maternal_gencodev29$Annotation<-"gencodev29"
+HG01978_B_Maternal_gencodev29$Annotation<-"gencodev29"
+HG03516_B_Maternal_gencodev29$Annotation<-"gencodev29"
+
+# Paternal LiftOff gencode v29
+HG00621_A_Paternal_gencodev29<-read.delim("bulk_rna/HG00621_1.pat.gencode_v29/rsem_quant/rep1HG00621_anno_rsem.isoforms.results", header = TRUE)
+HG00741_A_Paternal_gencodev29<-read.delim("bulk_rna/HG00741_1.pat.gencode_v29/rsem_quant/rep1HG00741_anno_rsem.isoforms.results", header = TRUE)
+HG01952_A_Paternal_gencodev29<-read.delim("bulk_rna/HG01952_1.HG01952_pat.gencode_v29/rsem_quant/rep1HG01952_1_anno_rsem.isoforms.results", header = TRUE)
+HG01978_A_Paternal_gencodev29<-read.delim("bulk_rna/HG01978_1.pat.gencode_v29/rsem_quant/rep1HG01978_anno_rsem.isoforms.results", header = TRUE)
+HG03516_A_Paternal_gencodev29<-read.delim("bulk_rna/HG03516_1.pat.gencode_v29/rsem_quant/rep1HG03516_anno_rsem.isoforms.results", header = TRUE)
+
+HG00621_B_Paternal_gencodev29<-read.delim("bulk_rna/HG00621_2.pat.gencode_v29/rsem_quant/rep1HG00621_anno_rsem.isoforms.results", header = TRUE)
+HG00741_B_Paternal_gencodev29<-read.delim("bulk_rna/HG00741_2.pat.gencode_v29/rsem_quant/rep1HG00741_anno_rsem.isoforms.results", header = TRUE)
+HG01952_B_Paternal_gencodev29<-read.delim("bulk_rna/HG01952_2.pat.gencode_v29/rsem_quant/rep1HG01952_anno_rsem.isoforms.results", header = TRUE)
+HG01978_B_Paternal_gencodev29<-read.delim("bulk_rna/HG01978_2.pat.gencode_v29/rsem_quant/rep1HG01978_anno_rsem.isoforms.results", header = TRUE)
+HG03516_B_Paternal_gencodev29<-read.delim("bulk_rna/HG03516_2.pat.gencode_v29/rsem_quant/rep1HG03516_anno_rsem.isoforms.results", header = TRUE)
+
+
+HG00621_A_Paternal_gencodev29$Sample<-"HG00621"
+HG00741_A_Paternal_gencodev29$Sample<-"HG00741"
+HG01952_A_Paternal_gencodev29$Sample<-"HG01952"
+HG01978_A_Paternal_gencodev29$Sample<-"HG01978"
+HG03516_A_Paternal_gencodev29$Sample<-"HG03516"
+HG00621_B_Paternal_gencodev29$Sample<-"HG00621"
+HG00741_B_Paternal_gencodev29$Sample<-"HG00741"
+HG01952_B_Paternal_gencodev29$Sample<-"HG01952"
+HG01978_B_Paternal_gencodev29$Sample<-"HG01978"
+HG03516_B_Paternal_gencodev29$Sample<-"HG03516"
+
+HG00621_A_Paternal_gencodev29$Replicate<-"A"
+HG00741_A_Paternal_gencodev29$Replicate<-"A"
+HG01952_A_Paternal_gencodev29$Replicate<-"A"
+HG01978_A_Paternal_gencodev29$Replicate<-"A"
+HG03516_A_Paternal_gencodev29$Replicate<-"A"
+HG00621_B_Paternal_gencodev29$Replicate<-"B"
+HG00741_B_Paternal_gencodev29$Replicate<-"B"
+HG01952_B_Paternal_gencodev29$Replicate<-"B"
+HG01978_B_Paternal_gencodev29$Replicate<-"B"
+HG03516_B_Paternal_gencodev29$Replicate<-"B"
+
+HG00621_A_Paternal_gencodev29$Genome<-"Paternal"
+HG00741_A_Paternal_gencodev29$Genome<-"Paternal"
+HG01952_A_Paternal_gencodev29$Genome<-"Paternal"
+HG01978_A_Paternal_gencodev29$Genome<-"Paternal"
+HG03516_A_Paternal_gencodev29$Genome<-"Paternal"
+HG00621_B_Paternal_gencodev29$Genome<-"Paternal"
+HG00741_B_Paternal_gencodev29$Genome<-"Paternal"
+HG01952_B_Paternal_gencodev29$Genome<-"Paternal"
+HG01978_B_Paternal_gencodev29$Genome<-"Paternal"
+HG03516_B_Paternal_gencodev29$Genome<-"Paternal"
+
+HG00621_A_Paternal_gencodev29$Annotation<-"gencodev29"
+HG00741_A_Paternal_gencodev29$Annotation<-"gencodev29"
+HG01952_A_Paternal_gencodev29$Annotation<-"gencodev29"
+HG01978_A_Paternal_gencodev29$Annotation<-"gencodev29"
+HG03516_A_Paternal_gencodev29$Annotation<-"gencodev29"
+HG00621_B_Paternal_gencodev29$Annotation<-"gencodev29"
+HG00741_B_Paternal_gencodev29$Annotation<-"gencodev29"
+HG01952_B_Paternal_gencodev29$Annotation<-"gencodev29"
+HG01978_B_Paternal_gencodev29$Annotation<-"gencodev29"
+HG03516_B_Paternal_gencodev29$Annotation<-"gencodev29"
+
+
+Combined.Long_RSEM<-bind_rows(
+  HG00621_A_hg38_gencodev29,
+  HG00741_A_hg38_gencodev29,
+  HG01952_A_hg38_gencodev29,
+  HG01978_A_hg38_gencodev29,
+  HG03516_A_hg38_gencodev29,
+  HG00621_B_hg38_gencodev29,
+  HG00741_B_hg38_gencodev29,
+  HG01952_B_hg38_gencodev29,
+  HG01978_B_hg38_gencodev29,
+  HG03516_B_hg38_gencodev29,
+  HG00621_A_CHM13_LiftOff,
+  HG00741_A_CHM13_LiftOff,
+  HG01952_A_CHM13_LiftOff,
+  HG01978_A_CHM13_LiftOff,
+  HG03516_A_CHM13_LiftOff,
+  HG00621_B_CHM13_LiftOff,
+  HG00741_B_CHM13_LiftOff,
+  HG01952_B_CHM13_LiftOff,
+  HG01978_B_CHM13_LiftOff,
+  HG03516_B_CHM13_LiftOff,
+  HG00621_A_Maternal_gencodev29,
+  HG00741_A_Maternal_gencodev29,
+  HG01952_A_Maternal_gencodev29,
+  HG01978_A_Maternal_gencodev29,
+  HG03516_A_Maternal_gencodev29,
+  HG00621_B_Maternal_gencodev29,
+  HG00741_B_Maternal_gencodev29,
+  HG01952_B_Maternal_gencodev29,
+  HG01978_B_Maternal_gencodev29,
+  HG03516_B_Maternal_gencodev29,
+  HG00621_A_Paternal_gencodev29,
+  HG00741_A_Paternal_gencodev29,
+  HG01952_A_Paternal_gencodev29,
+  HG01978_A_Paternal_gencodev29,
+  HG03516_A_Paternal_gencodev29,
+  HG00621_B_Paternal_gencodev29,
+  HG00741_B_Paternal_gencodev29,
+  HG01952_B_Paternal_gencodev29,
+  HG01978_B_Paternal_gencodev29,
+  HG03516_B_Paternal_gencodev29
+)
+
+Combined.Long_RSEM$Run<-paste(Combined.Long_RSEM$Sample,Combined.Long_RSEM$Replicate,Combined.Long_RSEM$Genome)
+
+
+
+# pangenome
+HG00621_A_pangenome<-read.delim("pangenome_bulk_rna/HG00621/replicate_1/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+HG00741_A_pangenome<-read.delim("pangenome_bulk_rna/HG00741/replicate_1/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+HG01952_A_pangenome<-read.delim("pangenome_bulk_rna/HG01952/replicate_1/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+HG01978_A_pangenome<-read.delim("pangenome_bulk_rna/HG01978/replicate_1/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+HG03516_A_pangenome<-read.delim("pangenome_bulk_rna/HG03516/replicate_1/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+
+HG00621_B_pangenome<-read.delim("pangenome_bulk_rna/HG00621/replicate_2/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+HG00741_B_pangenome<-read.delim("pangenome_bulk_rna/HG00741/replicate_2/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+HG01952_B_pangenome<-read.delim("pangenome_bulk_rna/HG01952/replicate_2/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+HG01978_B_pangenome<-read.delim("pangenome_bulk_rna/HG01978/replicate_2/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+HG03516_B_pangenome<-read.delim("pangenome_bulk_rna/HG03516/replicate_2/RPVG_Output_Full_GAMP_inference_transcripts.txt", header = TRUE)
+
+HG00621_A_pangenome$Sample<-"HG00621"
+HG00741_A_pangenome$Sample<-"HG00741"
+HG01952_A_pangenome$Sample<-"HG01952"
+HG01978_A_pangenome$Sample<-"HG01978"
+HG03516_A_pangenome$Sample<-"HG03516"
+HG00621_B_pangenome$Sample<-"HG00621"
+HG00741_B_pangenome$Sample<-"HG00741"
+HG01952_B_pangenome$Sample<-"HG01952"
+HG01978_B_pangenome$Sample<-"HG01978"
+HG03516_B_pangenome$Sample<-"HG03516"
+
+HG00621_A_pangenome$Replicate<-"A"
+HG00741_A_pangenome$Replicate<-"A"
+HG01952_A_pangenome$Replicate<-"A"
+HG01978_A_pangenome$Replicate<-"A"
+HG03516_A_pangenome$Replicate<-"A"
+HG00621_B_pangenome$Replicate<-"B"
+HG00741_B_pangenome$Replicate<-"B"
+HG01952_B_pangenome$Replicate<-"B"
+HG01978_B_pangenome$Replicate<-"B"
+HG03516_B_pangenome$Replicate<-"B"
+
+HG00621_A_pangenome$Genome<-"pangenome"
+HG00741_A_pangenome$Genome<-"pangenome"
+HG01952_A_pangenome$Genome<-"pangenome"
+HG01978_A_pangenome$Genome<-"pangenome"
+HG03516_A_pangenome$Genome<-"pangenome"
+HG00621_B_pangenome$Genome<-"pangenome"
+HG00741_B_pangenome$Genome<-"pangenome"
+HG01952_B_pangenome$Genome<-"pangenome"
+HG01978_B_pangenome$Genome<-"pangenome"
+HG03516_B_pangenome$Genome<-"pangenome"
+
+
+Combined_pangenome.Long<-bind_rows(
+  HG00621_A_pangenome,
+  HG00741_A_pangenome,
+  HG01952_A_pangenome,
+  HG01978_A_pangenome,
+  HG03516_A_pangenome,
+  HG00621_B_pangenome,
+  HG00741_B_pangenome,
+  HG01952_B_pangenome,
+  HG01978_B_pangenome,
+  HG03516_B_pangenome
+)
+
+Combined_pangenome.Long$Run<-paste(Combined_pangenome.Long$Sample,Combined_pangenome.Long$Replicate,Combined_pangenome.Long$Genome)
+```
+
+```{r compare with RSEM vs kallisto, include=TRUE}
+colnames(Combined_pangenome.Long)[1]<-"transcript_id"
+
+colnames(Combined.Long_Kallisto)[1]<-"transcript_id"
+colnames(Combined.Long_Kallisto)[5]<-"TPM"
+
+
+Combined_pangenome.Long$AbundanceCaller<-"RPVG"
+Combined.Long_RSEM$AbundanceCaller<-"RSEM"
+Combined.Long_Kallisto$AbundanceCaller<-"Kallisto"
+
+Combined_All.Long<-bind_rows(Combined_pangenome.Long[c(1,6,7:9,11)],Combined.Long_RSEM[,c(1,6,20:22,25)],Combined.Long_Kallisto[,c(1,5,6:8,11)])
+
+head(Combined_All.Long)
+
+Combined_All.Long$GenomeByCaller<-paste(Combined_All.Long$Genome, Combined_All.Long$AbundanceCaller,sep = "_")
+
+Combined.Wide<-spread(Combined_All.Long[,c(1:4,7)],GenomeByCaller,TPM)
+
+head(Combined.Wide)
+
+### Expressed in all
+Combined.Wide.Shared<-Combined.Wide[apply(is.na(Combined.Wide[,c(4:12)]),MARGIN = 1, sum)==0,]
+
+length(unique(Combined.Wide$transcript_id))
+sum(unique(Combined.Wide$transcript_id) %in% unique(Combined.Wide.Shared$transcript_id))
+
+
+# add R^2
+summary(lm(hg38_Kallisto~hg38_RSEM, Combined.Wide.Shared))
+
+Plot_Kallisto_vs_RSEM<-ggplot(Combined.Wide.Shared,aes(x=hg38_Kallisto,hg38_RSEM))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  ggtitle("RSEM versus Kallisto using hg38")+
+  xlab("Kallisto transcript abundance (tpm)")+
+  ylab("RSEM transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(hg38_Kallisto~hg38_RSEM, Combined.Wide.Shared))$adj.r.squared,2)),x=1,y=1024)
+
+ggsave(filename = "ComparisonFigures/Kallisot_vs_RSEM.png",plot = Plot_Kallisto_vs_RSEM, units = "in", width = 24, height = 10)
+
+Plot_Kallisto_vs_RSEM
+```
+
+```{r plot Maternal vs hg38, include=TRUE}
+# add R^2
+summary(lm(Maternal_RSEM~hg38_RSEM, Combined.Wide.Shared))
+
+Plot_Maternal_vs_hg38_RSEM<-ggplot(Combined.Wide.Shared,aes(x=Maternal_RSEM,hg38_RSEM))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  ggtitle("hg38 versus Maternal using RSEM")+
+  xlab("Maternal transcript abundance (tpm)")+
+  ylab("hg38 transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(Maternal_RSEM~hg38_RSEM, Combined.Wide.Shared))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/Maternal_vs_hg38_RSEM.png",plot = Plot_Maternal_vs_hg38_RSEM, units = "in", width = 24, height = 10)
+
+Plot_Maternal_vs_hg38_RSEM
+```
+
+```{r plot Paternal vs hg38, include=TRUE}
+# add R^2
+summary(lm(Paternal_RSEM~hg38_RSEM, Combined.Wide.Shared))
+
+Plot_Paternal_vs_hg38_RSEM<-ggplot(Combined.Wide.Shared,aes(x=Paternal_RSEM,hg38_RSEM))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  ggtitle("hg38 versus Paternal using RSEM")+
+  xlab("Paternal transcript abundance (tpm)")+
+  ylab("hg38 transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(Paternal_RSEM~hg38_RSEM, Combined.Wide.Shared))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/Paternal_vs_hg38_RSEM.png",plot = Plot_Paternal_vs_hg38_RSEM, units = "in", width = 24, height = 10)
+
+Plot_Paternal_vs_hg38_RSEM
+```
+
+```{r plot CHM13 vs hg38, include=TRUE}
+# add R^2
+summary(lm(CHM13_RSEM~hg38_RSEM, Combined.Wide.Shared))
+
+Plot_CHM13_vs_hg38_RSEM<-ggplot(Combined.Wide.Shared,aes(x=CHM13_RSEM,hg38_RSEM))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  ggtitle("hg38 versus CHM13 using RSEM")+
+  xlab("CHM13 transcript abundance (tpm)")+
+  ylab("hg38 transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(CHM13_RSEM~hg38_RSEM, Combined.Wide.Shared))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/CHM13_vs_hg38_RSEM.png",plot = Plot_CHM13_vs_hg38_RSEM, units = "in", width = 24, height = 10)
+
+Plot_CHM13_vs_hg38_RSEM
+```
+
+```{r plot Pangenome vs hg38, include=TRUE}
+# add R^2
+summary(lm(pangenome_RPVG~hg38_RSEM, Combined.Wide.Shared))
+
+Plot_pangenome_RPVG_vs_hg38_RSEM<-ggplot(Combined.Wide.Shared,aes(x=pangenome_RPVG,hg38_RSEM))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  ggtitle("hg38 (RSEM) versus Pangenome (RPVG)")+
+  xlab("Pangenome transcript abundance (tpm)")+
+  ylab("hg38 transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(pangenome_RPVG~hg38_RSEM, Combined.Wide.Shared))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+
+ggsave(filename = "ComparisonFigures/pangenome_RPVG_vs_hg38_RSEM.png",plot = Plot_pangenome_RPVG_vs_hg38_RSEM, units = "in", width = 24, height = 10)
+
+Plot_pangenome_RPVG_vs_hg38_RSEM
+```
+
+```{r plot Pangenome vs Maternal, include=TRUE}
+# add R^2
+summary(lm(pangenome_RPVG~Maternal_RSEM, Combined.Wide.Shared))
+
+Plot_pangenome_RPVG_vs_Maternal_RSEM<-ggplot(Combined.Wide.Shared,aes(x=pangenome_RPVG,Maternal_RSEM))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  ggtitle("Maternal (RSEM) versus Pangenome (RPVG)")+
+  xlab("Pangenome transcript abundance (tpm)")+
+  ylab("Maternal transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(pangenome_RPVG~Maternal_RSEM, Combined.Wide.Shared))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/pangenome_RPVG_vs_Maternal_RSEM.png",plot = Plot_pangenome_RPVG_vs_Maternal_RSEM, units = "in", width = 24, height = 10)
+
+Plot_pangenome_RPVG_vs_Maternal_RSEM
+```
+
+
+```{r plot Pangenome vs Paternal, include=TRUE}
+# add R^2
+summary(lm(pangenome_RPVG~Paternal_RSEM, Combined.Wide.Shared))
+
+Plot_pangenome_RPVG_vs_Paternal_RSEM<-ggplot(Combined.Wide.Shared,aes(x=pangenome_RPVG,Paternal_RSEM))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(Replicate~Sample)+
+  CS.THEME+
+  ggtitle("Paternal (RSEM) versus Pangenome (RPVG)")+
+  xlab("Pangenome transcript abundance (tpm)")+
+  ylab("Paternal transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(pangenome_RPVG~Paternal_RSEM, Combined.Wide.Shared))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/pangenome_RPVG_vs_Paternal_RSEM.png",plot = Plot_pangenome_RPVG_vs_Paternal_RSEM, units = "in", width = 24, height = 10)
+
+Plot_pangenome_RPVG_vs_Paternal_RSEM
+```
+
+```{r Plot by replicates, include=TRUE}
+Combined.Wide.Shared.Replicates<-
+  cbind(
+    subset(Combined.Wide.Shared, Replicate=="A")[,c(1,2)],
+    subset(Combined.Wide.Shared, Replicate=="A")$hg38_RSEM,
+    subset(Combined.Wide.Shared, Replicate=="B")$hg38_RSEM,
+    subset(Combined.Wide.Shared, Replicate=="A")$Maternal_RSEM,
+    subset(Combined.Wide.Shared, Replicate=="B")$Maternal_RSEM,
+    subset(Combined.Wide.Shared, Replicate=="A")$Paternal_RSEM,
+    subset(Combined.Wide.Shared, Replicate=="B")$Paternal_RSEM,
+    subset(Combined.Wide.Shared, Replicate=="A")$pangenome_RPVG,
+    subset(Combined.Wide.Shared, Replicate=="B")$pangenome_RPVG,
+    subset(Combined.Wide.Shared, Replicate=="A")$CHM13_RSEM,
+    subset(Combined.Wide.Shared, Replicate=="B")$CHM13_RSEM
+    )
+
+colnames(Combined.Wide.Shared.Replicates)<-c("transcript_id","Sample","hg38_RSEM_A","hg38_RSEM_B","Maternal_RSEM_A","Maternal_RSEM_B","Paternal_RSEM_A","Paternal_RSEM_B","pangenome_RPVG_A","pangenome_RPVG_B","CHM13_RSEM_A","CHM13_RSEM_B")
+
+
+Plot_hg38_RSEM_byReplicate<-ggplot(Combined.Wide.Shared.Replicates,aes(x=hg38_RSEM_A,hg38_RSEM_B))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(.~Sample)+
+  CS.THEME+
+  ggtitle("hg38 RSEM by Replicate")+
+  xlab("Replicate A transcript abundance (tpm)")+
+  ylab("Replicate B transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(hg38_RSEM_A~hg38_RSEM_B, Combined.Wide.Shared.Replicates))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/hg38_RSEM_byReplicate.png",plot = Plot_hg38_RSEM_byReplicate, units = "in", width = 24, height = 5)
+
+
+Plot_Maternal_RSEM_byReplicate<-ggplot(Combined.Wide.Shared.Replicates,aes(x=Maternal_RSEM_A,Maternal_RSEM_B))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(.~Sample)+
+  CS.THEME+
+  ggtitle("Maternal RSEM by Replicate")+
+  xlab("Replicate A transcript abundance (tpm)")+
+  ylab("Replicate B transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(Maternal_RSEM_A~Maternal_RSEM_B, Combined.Wide.Shared.Replicates))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/Maternal_RSEM_byReplicate.png",plot = Plot_Maternal_RSEM_byReplicate, units = "in", width = 24, height = 5)
+
+
+Plot_CHM13_RSEM_byReplicate<-ggplot(Combined.Wide.Shared.Replicates,aes(x=CHM13_RSEM_A,CHM13_RSEM_B))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(.~Sample)+
+  CS.THEME+
+  ggtitle("CHM13 RSEM by Replicate")+
+  xlab("Replicate A transcript abundance (tpm)")+
+  ylab("Replicate B transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(CHM13_RSEM_A~CHM13_RSEM_B, Combined.Wide.Shared.Replicates))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/CHM13_RSEM_byReplicate.png",plot = Plot_CHM13_RSEM_byReplicate, units = "in", width = 24, height = 5)
+
+
+Plot_Paternal_RSEM_byReplicate<-ggplot(Combined.Wide.Shared.Replicates,aes(x=Paternal_RSEM_A,Paternal_RSEM_B))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(.~Sample)+
+  CS.THEME+
+  ggtitle("Paternal RSEM by Replicate")+
+  xlab("Replicate A transcript abundance (tpm)")+
+  ylab("Replicate B transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(Paternal_RSEM_A~Paternal_RSEM_B, Combined.Wide.Shared.Replicates))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/Paternal_RSEM_byReplicate.png",plot = Plot_Paternal_RSEM_byReplicate, units = "in", width = 24, height = 5)
+  
+
+Plot_pangenome_RPVG_byReplicate<-ggplot(Combined.Wide.Shared.Replicates,aes(x=pangenome_RPVG_A,pangenome_RPVG_B))+
+  geom_point(size=0.25)+
+  geom_abline()+
+  scale_y_continuous(trans = "log2")+
+  scale_x_continuous(trans = "log2")+
+  facet_grid(.~Sample)+
+  CS.THEME+
+  ggtitle("Pangenome RPVG by Replicate")+
+  xlab("Replicate A transcript abundance (tpm)")+
+  ylab("Replicate B transcript abundance (tpm)")+
+  geom_text(aes(label=round(summary(lm(pangenome_RPVG_A~pangenome_RPVG_B, Combined.Wide.Shared.Replicates))$adj.r.squared,3)),x=log2(1),y=log2(1024))
+
+ggsave(filename = "ComparisonFigures/pangenome_RPVG_byReplicate.png",plot = Plot_pangenome_RPVG_byReplicate, units = "in", width = 24, height = 5)
+```
+
+```{r wrange and calcualte some basic stats, include=TRUE}
+Combined.Wide.All<-spread(subset(Combined_All.Long, transcript_id %in% unique(Combined.Wide.Shared$transcript_id))[,c(3,4,5,6,7,1,2)],transcript_id,TPM)
+
+Combined.Wide.All[1:10,1:10]
+
+Combined.Wide.PCA<-Combined.Wide.All[,-c(1:5)]
+
+dim(Combined.Wide.All)
+
+### Percent of genes not expressed by any run
+100*sum(colSums(Combined.Wide.PCA,na.rm = TRUE)==0)/ncol(Combined.Wide.PCA)
+
+### Filter genes not expressed by any run
+Combined.Wide.PCA<-Combined.Wide.PCA[,colSums(Combined.Wide.PCA,na.rm = TRUE)>0]
+dim(Combined.Wide.PCA)
+
+### How many transcripts had an NA entry?
+ListOfNAcontainingTranscripts<-colnames(Combined.Wide.PCA)[colSums(apply(Combined.Wide.PCA, c(1,2), is.na))>0]
+length(ListOfNAcontainingTranscripts)
+
+### Filter transcripts that that an NA entry
+Combined.Wide.PCA<-Combined.Wide.PCA[, !(colnames(Combined.Wide.PCA) %in% ListOfNAcontainingTranscripts) ]
+dim(Combined.Wide.PCA)
+```
+
+```{r PCA with kallisto left in, include=TRUE}
+res.pca<-prcomp(Combined.Wide.PCA, scale=TRUE)
+fviz_eig(res.pca)
+
+
+groups.Method <- as.factor(Combined.Wide.All$AbundanceCaller)
+PCA.Plot.Method<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Method,
+                              palette = viridis(3, end=0.9),
+                              repel = TRUE,
+                              title="Method - PCA"
+)+
+  CS.THEME+
+  theme(legend.position="bottom")
+
+
+groups.Sample <- as.factor(Combined.Wide.All$Sample)
+PCA.Plot.Sample<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Sample,
+                              palette = viridis(6, end=0.9),
+                              repel = TRUE,
+                              title="Samples - PCA"
+)+
+  CS.THEME+
+  theme(legend.position="bottom")
+
+PCA.Plot.Sample
+
+groups <- as.factor(Combined.Wide.All$Genome)
+PCA.Plot.Genome<-fviz_pca_ind(res.pca,
+                              col.ind = groups,
+                              palette = viridis(5,option = "magma", end = 0.8),
+                              repel = TRUE,
+                              title="Genome - PCA"
+)+
+  CS.THEME+
+  theme(legend.position="bottom")
+
+groups <- as.factor(Combined.Wide.All$Replicate)
+PCA.Plot.Replicate<-fviz_pca_ind(res.pca,
+                                 col.ind = groups,
+                                 palette = viridis(2,option = "cividis", end = 0.8),
+                                 repel = TRUE,
+                                 title="Replicate - PCA"
+)+
+  CS.THEME+
+  theme(legend.position="bottom")
+
+Transcriptome.PCA.Panel<-plot_grid(PCA.Plot.Method,PCA.Plot.Sample,PCA.Plot.Genome,PCA.Plot.Replicate,labels = "AUTO",ncol=2)
+
+ggsave2(filename = "Figures/Transcriptome.PCA.Panel.png",plot = Transcriptome.PCA.Panel, units = "in", width = 17*0.75, height = 17*0.75)
+```
+
+```{r prepare and run PCA without kallisto, include=TRUE}
+Combined.Wide.All<-spread(subset(Combined_All.Long, AbundanceCaller!= "Kallisto" & Sample != "HG002" & transcript_id %in% unique(Combined.Wide.Shared$transcript_id))[,c(3,4,5,6,7,1,2)],transcript_id,TPM)
+
+# Save all shared transcripts abudnances
+write.table(Combined.Wide.All, file = "Combined.Wide.All.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+Combined.Wide.All[1:10,1:10]
+
+Combined.Wide.PCA<-Combined.Wide.All[,-c(1:5)]
+
+dim(Combined.Wide.All)
+
+### Percent of genes not expressed by any run
+100*sum(colSums(Combined.Wide.PCA,na.rm = TRUE)==0)/ncol(Combined.Wide.PCA)
+
+### Filter genes not expressed by any run ### I am filtering out lowly expressed genes
+Combined.Wide.PCA<-Combined.Wide.PCA[,colSums(Combined.Wide.PCA,na.rm = TRUE)>10]
+dim(Combined.Wide.PCA)
+
+### How many transcripts had an NA entry?
+ListOfNAcontainingTranscripts<-colnames(Combined.Wide.PCA)[colSums(apply(Combined.Wide.PCA, c(1,2), is.na))>0]
+length(ListOfNAcontainingTranscripts)
+
+### Filter transcripts that that an NA entry
+Combined.Wide.PCA<-Combined.Wide.PCA[, !(colnames(Combined.Wide.PCA) %in% ListOfNAcontainingTranscripts) ]
+
+### How many transcripts have zero variance
+ListOfInvariantcontainingTranscripts<-colnames(Combined.Wide.PCA)[unlist( apply(Combined.Wide.PCA, 2, function(COLUMN) sd(COLUMN, na.rm = TRUE) ) )==0]
+length(ListOfInvariantcontainingTranscripts)
+
+### Filter invariant features
+Combined.Wide.PCA<-Combined.Wide.PCA[, !(colnames(Combined.Wide.PCA) %in% ListOfInvariantcontainingTranscripts) ]
+
+dim(Combined.Wide.PCA)
+
+res.pca<-prcomp(Combined.Wide.PCA, scale=TRUE)
+groups.Method <- as.factor(Combined.Wide.All$AbundanceCaller)
+groups.Sample <- as.factor(Combined.Wide.All$Sample)
+groups.Replicate <- as.factor(Combined.Wide.All$Replicate)
+groups.Genome <- as.factor(Combined.Wide.All$Genome)
+```
+
+```{r Get the partial eta squared values, include=TRUE}
+PCA.VarObject<-cbind(res.pca$x,data.frame(Sample=groups.Sample),data.frame(Replicate=groups.Replicate),data.frame(Genome=groups.Genome),data.frame(Method=groups.Method))
+
+manova_model<-manova(cbind(PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10,PC11,PC12,PC13,PC14,PC15,PC16,PC17,PC18,PC19,PC20)~Sample*Genome:Method+Replicate,PCA.VarObject)
+manova_model.Summary<-summary(manova_model)
+aov_results <- summary.aov(manova_model)
+
+NUM.PCs<-20
+PC.PartialEtaSquareds<-lapply(1:NUM.PCs,
+                              function(PC){aov_results[[PC]][[2]][1:5]/sum(aov_results[[PC]][[2]])}
+) %>% do.call(rbind,.) %>% as.data.frame 
+
+colnames(PC.PartialEtaSquareds)<-c("Sample","Replicate","Genome:Method","Sample:Genome:Method","Residual")
+
+PC.Statistics<-cbind(as.factor(1:NUM.PCs),get_eig(res.pca)[1:NUM.PCs,],PC.PartialEtaSquareds)
+colnames(PC.Statistics)<-c("PC","Eigenvalue","VariancePercent","CumulativeVariancePercent","PartialEtaSquared.Sample","PartialEtaSquared.Replicate","PartialEtaSquared.Genome:Method","PartialEtaSquared.Sample:Genome:Method","PartialEtaSquared.Residual")
+rownames(PC.Statistics)<-NULL
+
+PC.Statistics$VariancePercent.Sample<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Sample
+PC.Statistics$VariancePercent.Replicate<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Replicate
+PC.Statistics$VariancePercent.Genome.Method<-PC.Statistics$VariancePercent*PC.Statistics$`PartialEtaSquared.Genome:Method`
+PC.Statistics$VariancePercent.Sample.Genome.Method<-PC.Statistics$VariancePercent*PC.Statistics$`PartialEtaSquared.Sample:Genome:Method`
+PC.Statistics$VariancePercent.Residual<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Residual
+
+# Save the PC statistics
+write.table(PC.Statistics, file = "PC.Statistics.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+```{r plot variance partions, include=TRUE}
+# Make long df to plot variance percents
+PC.Statistics.VariancePercent.Long<-gather(PC.Statistics[,c(1,10:14)],key="VarianceType",value="VariancePercent",VariancePercent.Sample:VariancePercent.Residual)
+# clean up names
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("VariancePercent.","",PC.Statistics.VariancePercent.Long$VarianceType)
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("Sample.Genome","Sample:Genome",PC.Statistics.VariancePercent.Long$VarianceType)
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("Genome.Method","Genome:Method",PC.Statistics.VariancePercent.Long$VarianceType)
+
+PC.Statistics.VariancePercent.Long$VarianceType<-factor(PC.Statistics.VariancePercent.Long$VarianceType, levels = c("Sample","Genome:Method","Sample:Genome:Method","Replicate","Residual"), ordered = TRUE)
+
+Plot.PCs<-ggplot(PC.Statistics.VariancePercent.Long, aes(fill=VarianceType, y=VariancePercent, x=PC)) + 
+  geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#ff7f5d","#2d5879","#b2823f","#aaaaaa","#333434"))+
+  #scale_fill_manual(values = c("#2d5879","#aaaaaa","#333434","#ff7f5d","#b2823f"))+
+  ylab("Percent of variance")+
+  xlab("Principal component")+
+  ggtitle("RNAseq - Expression\n%Variance captured by PCs partitioned by factor")+
+  CS.THEME+
+  theme(legend.position="bottom")+
+  scale_y_continuous(limits = c(0,round(max(PC.Statistics$VariancePercent)*1.05)), expand = c(0,0))+
+  theme(legend.key.size = unit(0.2, "cm"))
+
+ggsave2(filename = "Transcriptome_PCs.png",plot = Plot.PCs,units = "in",width = 9, height = 6)
+
+Plot.PCs
+```
+
+```{r plot PCAs, include=TRUE}
+PCA.Plot.Method<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Method,
+                              palette = viridis(3, end=0.9),
+                              repel = TRUE,
+                              title="Expression - Method"
+)+
+  CS.THEME
+
+
+PCA.Plot.Sample<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Sample,
+                              palette = viridis(6, end=0.9),
+                              repel = TRUE,
+                              title="Expression - Samples"
+)+
+  CS.THEME
+
+PCA.Plot.Sample
+
+PCA.Plot.Genome<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Genome,
+                              palette = viridis(5,option = "magma", end = 0.8),
+                              repel = TRUE,
+                              title="Expression - Genome"
+)+
+  CS.THEME
+
+
+PCA.Plot.Replicate<-fviz_pca_ind(res.pca,
+                                 col.ind = groups.Replicate,
+                                 palette = viridis(2,option = "cividis", end = 0.8),
+                                 repel = TRUE,
+                                 title="Replicate - PCA"
+)+
+  CS.THEME
+
+Transcriptome.PCA.Panel<-plot_grid(PCA.Plot.Sample,PCA.Plot.Genome,PCA.Plot.Replicate,labels = c("D","E","F"),ncol=3)
+
+ggsave2(filename = "Figures/NoKallisto_Transcriptome.PCA.Panel.png",plot = Transcriptome.PCA.Panel, units = "in", width = 17*1, height = 6*0.75)
+
+Transcriptome.PCA.Panel
+```
+
+```{r With pangenome per transcript Variance partitioning, include=TRUE}
+TESTSET<-Combined.Wide.All
+
+runTranscriptAOV<-function(TRANSCRIPT){
+  
+  TEST.DF<-data.frame(
+    Transcript=TESTSET[,colnames(TESTSET)==TRANSCRIPT],
+    Sample=TESTSET$Sample,
+    Genome=TESTSET$Genome,
+    AbundanceCaller=TESTSET$AbundanceCaller
+  )
+  aov(Transcript~AbundanceCaller+Sample*Genome,TEST.DF)
+}
+
+dim(Combined.Wide.All)
+
+MODELS<-lapply(colnames(Combined.Wide.PCA), function(TRANSCRIPT) runTranscriptAOV(TRANSCRIPT))
+
+VarianceFractions<-lapply(1:length(MODELS), function(N) data.frame(t(summary(MODELS[[N]])[[1]][,2]/sum(summary(MODELS[[N]])[[1]][,2]))) ) %>% bind_rows()
+colnames(VarianceFractions)<-c("AbundanceCaller","Sample","Genome","Sample.Genome","Residuals")
+
+VarianceFractions$Transcript<-colnames(Combined.Wide.PCA)
+
+```
+
+```{r plot variance partitioning histograms, include=TRUE}
+VarianceParitionHistogram_Genome<-ggplot(VarianceFractions, aes(x=100*Genome))+
+  geom_histogram()+
+  CS.THEME+
+  ggtitle("Genome")+
+  xlab("%Variance accounted for")+
+  scale_y_continuous(expand = c(0,0),limits = c(0,25000))+
+  scale_x_continuous(expand = c(0,0),limits = c(-2,100))+
+  CS.THEME
+
+VarianceParitionHistogram_Sample<-ggplot(VarianceFractions, aes(x=100*Sample))+
+  geom_histogram()+
+  CS.THEME+
+  ggtitle("Sample")+
+  xlab("%Variance accounted for")+
+  scale_y_continuous(expand = c(0,0),limits = c(0,25000))+
+  scale_x_continuous(expand = c(0,0),limits = c(-2,100))+
+  CS.THEME
+
+VarianceParitionHistogram_SampleGenome<-ggplot(VarianceFractions, aes(x=100*Sample.Genome))+
+  geom_histogram()+
+  CS.THEME+
+  ggtitle("Sample:Genome")+
+  xlab("%Variance accounted for")+
+  scale_y_continuous(expand = c(0,0),limits = c(0,25000))+
+  scale_x_continuous(expand = c(0,0),limits = c(-2,100))+
+  CS.THEME
+
+VarianceParitionHistogram_Caller<-ggplot(VarianceFractions, aes(x=100*AbundanceCaller))+
+  geom_histogram()+
+  CS.THEME+
+  ggtitle("Pangenome")+
+  xlab("%Variance accounted for")+
+  scale_y_continuous(expand = c(0,0),limits = c(0,25000))+
+  scale_x_continuous(expand = c(0,0),limits = c(-2,100))+
+  CS.THEME
+
+
+VarianceParitionHistogram_Panel<-plot_grid(VarianceParitionHistogram_Sample,VarianceParitionHistogram_Genome,VarianceParitionHistogram_SampleGenome,VarianceParitionHistogram_Caller,labels = "AUTO")
+
+ggsave(filename = "Figures/VarianceParitionHistogram_Panel.png",plot = VarianceParitionHistogram_Panel, units = "in", height = 6, width = 6)
+
+VarianceParitionHistogram_Panel
+```
+
+```{r genome by sample variance fractions scatter plot, include=TRUE}
+ggplot(VarianceFractions, aes(x=Genome,y=Sample))+
+  geom_point(size=0.75)+
+  CS.THEME
+```
+
+```{r Mean variance explained by term, include=TRUE}
+mean(VarianceFractions$Sample,na.rm = TRUE)*100
+
+mean(VarianceFractions$Genome,na.rm = TRUE)*100
+
+mean(VarianceFractions$Sample.Genome,na.rm = TRUE)*100
+
+mean(VarianceFractions$AbundanceCaller,na.rm = TRUE)*100
+```
+
+```{r plot variances attributable as a function of expression level, include=TRUE}
+TMP.MEANS<-apply(Combined.Wide.PCA, 2, function(X) mean(X, na.rm=TRUE))
+
+VarianceFractions$MeanTPM<-TMP.MEANS[match(VarianceFractions$Transcript,names(TMP.MEANS))]
+
+### Variance attributable to genome choice as a function of mean expression level
+VarianceFractionbyTPM.A<-ggplot(VarianceFractions, aes(x=Genome,y=MeanTPM))+
+  geom_point(size=0.5)+
+  CS.THEME+
+  scale_y_continuous(trans = "log2")
+
+### Variance attributable to genome choice as a function of mean expression level
+VarianceFractionbyTPM.B<-ggplot(VarianceFractions, aes(x=Sample,y=MeanTPM))+
+  geom_point(size=0.5)+
+  CS.THEME+
+  scale_y_continuous(trans = "log2")
+
+### Variance attributable to genome choice as a function of mean expression level
+VarianceFractionbyTPM.C<-ggplot(VarianceFractions, aes(x=Sample.Genome,y=MeanTPM))+
+  geom_point(size=0.5)+
+  CS.THEME+
+  scale_y_continuous(trans = "log2")
+
+### Variance attributable to pangenome as a function of mean expression level
+VarianceFractionbyTPM.D<-ggplot(VarianceFractions, aes(x=AbundanceCaller,y=MeanTPM))+
+  geom_point(size=0.5)+
+  CS.THEME+
+  scale_y_continuous(trans = "log2")
+
+
+VarianceFractionbyTPM.Panel<-plot_grid(VarianceFractionbyTPM.A,VarianceFractionbyTPM.B,VarianceFractionbyTPM.C,VarianceFractionbyTPM.D, ncol = 2, labels = c("E","F","G","H"))
+
+ggsave2(filename = "VarianceFractionbyTPM.Panel.png",plot = VarianceFractionbyTPM.Panel, units = "in", height = 6, width = 6)
+
+```
+
+```{r return some transcripts of interest, include=TRUE}
+subset(VarianceFractions, Sample >0.9 & MeanTPM>25)
+```
+
+```{r save with pangenome variance fractions, include=TRUE}
+VarianceFractions$gene_id<-Combined.Long_RSEM[,1:2][,2][match(VarianceFractions$Transcript,Combined.Long_RSEM[,1:2][,1])]
+
+write.table(x = VarianceFractions, file = "VarianceFractions.txt", quote = FALSE, col.names = TRUE, row.names = FALSE)
+```
+
+```{r partition variances with pangenome excluded, include=TRUE}
+### No pangenome
+Combined.Wide.PCA<-Combined.Wide.PCA[Combined.Wide.All$AbundanceCaller!="RPVG",]
+Combined.Wide.All<-Combined.Wide.All[Combined.Wide.All$AbundanceCaller!="RPVG",]
+
+### How many transcripts have zero variance
+ListOfInvariantcontainingTranscripts.npg<-colnames(Combined.Wide.PCA)[unlist( apply(Combined.Wide.PCA, 2, function(COLUMN) sd(COLUMN, na.rm = TRUE) ) )==0]
+length(ListOfInvariantcontainingTranscripts.npg)
+
+### Filter invariant features
+Combined.Wide.PCA<-Combined.Wide.PCA[, !(colnames(Combined.Wide.PCA) %in% ListOfInvariantcontainingTranscripts.npg) ]
+
+res.pca<-prcomp(Combined.Wide.PCA, scale=TRUE)
+groups.Sample <- as.factor(Combined.Wide.All$Sample)
+groups.Replicate <- as.factor(Combined.Wide.All$Replicate)
+groups.Genome <- as.factor(Combined.Wide.All$Genome)
+
+# Get the partial eta squared values
+PCA.VarObject<-cbind(res.pca$x,data.frame(Sample=groups.Sample),data.frame(Replicate=groups.Replicate),data.frame(Genome=groups.Genome))
+
+manova_model<-manova(cbind(PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10,PC11,PC12,PC13,PC14,PC15,PC16,PC17,PC18,PC19)~Sample*Genome+Replicate,PCA.VarObject)
+manova_model.Summary<-summary(manova_model)
+aov_results <- summary.aov(manova_model)
+
+NUM.PCs<-13
+PC.PartialEtaSquareds<-lapply(1:NUM.PCs,
+                              function(PC){aov_results[[PC]][[2]][1:5]/sum(aov_results[[PC]][[2]])}
+) %>% do.call(rbind,.) %>% as.data.frame 
+
+colnames(PC.PartialEtaSquareds)<-c("Sample","Genome","Replicate","Sample:Genome","Residual")
+
+PC.Statistics<-cbind(as.factor(1:NUM.PCs),get_eig(res.pca)[1:NUM.PCs,],PC.PartialEtaSquareds)
+colnames(PC.Statistics)<-c("PC","Eigenvalue","VariancePercent","CumulativeVariancePercent","PartialEtaSquared.Sample","PartialEtaSquared.Genome","PartialEtaSquared.Replicate","PartialEtaSquared.Sample:Genome","PartialEtaSquared.Residual")
+rownames(PC.Statistics)<-NULL
+
+PC.Statistics$VariancePercent.Sample<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Sample
+PC.Statistics$VariancePercent.Replicate<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Replicate
+PC.Statistics$VariancePercent.Genome<-PC.Statistics$VariancePercent*PC.Statistics$`PartialEtaSquared.Genome`
+PC.Statistics$VariancePercent.Sample.Genome<-PC.Statistics$VariancePercent*PC.Statistics$`PartialEtaSquared.Sample:Genome`
+PC.Statistics$VariancePercent.Residual<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Residual
+
+# Save the PC statistics
+write.table(PC.Statistics, file = "PC.NoPangenome.Statistics.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+```
+
+```{r plot variance partitioning without pangenome, include=TRUE}
+# Make long df to plot variance percents
+PC.Statistics.VariancePercent.Long<-gather(PC.Statistics[,c(1,10:14)],key="VarianceType",value="VariancePercent",VariancePercent.Sample:VariancePercent.Residual)
+# clean up names
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("VariancePercent.","",PC.Statistics.VariancePercent.Long$VarianceType)
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("Sample.Genome","Sample:Genome",PC.Statistics.VariancePercent.Long$VarianceType)
+#PC.Statistics.VariancePercent.Long$VarianceType<-gsub("Genome.Method","Genome:Method",PC.Statistics.VariancePercent.Long$VarianceType)
+
+PC.Statistics.VariancePercent.Long$VarianceType<-factor(PC.Statistics.VariancePercent.Long$VarianceType, levels = c("Sample","Genome","Sample:Genome","Replicate","Residual"), ordered = TRUE)
+
+Plot.PCs<-ggplot(PC.Statistics.VariancePercent.Long, aes(fill=VarianceType, y=VariancePercent, x=PC)) + 
+  geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#ff7f5d","#2d5879","#b2823f","#aaaaaa","#333434"))+
+  #scale_fill_manual(values = c("#2d5879","#aaaaaa","#333434","#ff7f5d","#b2823f"))+
+  ylab("Percent of variance")+
+  xlab("Principal component")+
+  ggtitle("RNAseq - Expression\n%Variance captured by PCs partitioned by factor")+
+  CS.THEME+
+  theme(legend.position="bottom")+
+  scale_y_continuous(limits = c(0,round(max(PC.Statistics$VariancePercent)*1.05)), expand = c(0,0))+
+  theme(legend.key.size = unit(0.2, "cm"))
+
+ggsave2(filename = "Transcriptome_PCs_NoPangenome.png",plot = Plot.PCs,units = "in",width = 9, height = 6)
+```
+
+```{r plot PCAs without pangenome, include=TRUE}
+PCA.Plot.Sample<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Sample,
+                              palette = viridis(6, end=0.9),
+                              repel = TRUE,
+                              title="Expression - Samples"
+)+
+  CS.THEME
+
+PCA.Plot.Sample
+
+PCA.Plot.Genome<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Genome,
+                              palette = viridis(5,option = "magma", end = 0.8),
+                              repel = TRUE,
+                              title="Expression - Genome"
+)+
+  CS.THEME
+
+
+PCA.Plot.Replicate<-fviz_pca_ind(res.pca,
+                                 col.ind = groups.Replicate,
+                                 palette = viridis(2,option = "cividis", end = 0.8),
+                                 repel = TRUE,
+                                 title="Replicate - PCA"
+)+
+  CS.THEME
+
+Transcriptome.PCA.Panel<-plot_grid(PCA.Plot.Sample,PCA.Plot.Genome,PCA.Plot.Replicate,labels = c("A","B","C"),ncol=3)
+
+ggsave2(filename = "Figures/NoKallisto_NoPangenome_Transcriptome.PCA.Panel.png",plot = Transcriptome.PCA.Panel, units = "in", width = 17*1, height = 6*0.75)
+```
+

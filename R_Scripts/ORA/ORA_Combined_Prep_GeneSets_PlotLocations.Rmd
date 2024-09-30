@@ -1,0 +1,524 @@
+---
+title: "Combine and plot ORA results and compare genome choice effects "
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+set.seed(0)
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets")
+
+rm(list = ls())
+set.seed(0)
+
+require("ggplot2")
+require("cowplot")
+require("viridis")
+require("reshape2")
+require("dplyr")
+require("tidyverse")
+library("chromoMap")
+library(htmlwidgets)
+library(rtracklayer)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+
+theme_set(theme_cowplot())
+```
+
+```{r Import Genes ATAC-seq}
+ATACseq.GOI<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/PeakComparison/ORA/ENSEMBL.ID.Nearest.txt", stringsAsFactors=FALSE, header = FALSE)[,1]
+ATACseq.NULL<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/PeakComparison/ORA/All.ENSEMBL.ID.Nearest.txt", stringsAsFactors=FALSE, header = FALSE)[,1]
+
+write.table(ATACseq.NULL, "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/ATACseqNull.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+```{r Import Genes RNA-seq}
+## RNAseq Genes
+RNAseq.VarianceFractions<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/VarianceFractions.txt", stringsAsFactors=FALSE, header = TRUE,sep = " ")
+
+### The RNAseq data is a bit different in that it can show genome choice effects in several interesting ways. By genome across samples, by genome specific to a sample, and between the pangenome and the rest
+### I need to take the above variance fractions and make 3 sets of interest corresponding the aforementioned interesting patterns.
+### I will make a null gene set of all genes expressed above the threshold (MeanTPM)
+
+THRESHOLD<-1
+#### Sample choice across samples
+RNAseq.Sample.df<-subset(RNAseq.VarianceFractions, MeanTPM>=THRESHOLD & Sample>=0.2)
+print("Sample choice across samples - Percent of full gene set")
+100*length(unique(RNAseq.Sample.df$Transcript))/length(unique(RNAseq.VarianceFractions$Transcript))
+
+
+#### Genome choice across samples
+RNAseq.Genome.df<-subset(RNAseq.VarianceFractions, MeanTPM>=THRESHOLD & Genome>=0.2)
+print("Genome choice across samples - Percent of full gene set")
+100*length(unique(RNAseq.Genome.df$Transcript))/length(unique(RNAseq.VarianceFractions$Transcript))
+
+RNAseq.Genome.GOI<-unlist(lapply(unique(sort(RNAseq.Genome.df$gene_id)), function(X) strsplit(X,"\\.")[[1]][1]))
+
+#### Genome choice specific to a sample
+RNAseq.GenomeXSample.df<-subset(RNAseq.VarianceFractions, MeanTPM>=THRESHOLD & Sample.Genome>=0.2)
+print("Genome choice specific to a sample - Percent of full gene set")
+100*length(unique(RNAseq.GenomeXSample.df$Transcript))/length(unique(RNAseq.VarianceFractions$Transcript))
+
+RNAseq.GenomeXSample.GOI<-unlist(lapply(unique(sort(RNAseq.GenomeXSample.df$gene_id)), function(X) strsplit(X,"\\.")[[1]][1]))
+
+#### Pangenome choice
+RNAseq.Pangenome.df<-subset(RNAseq.VarianceFractions, MeanTPM>=THRESHOLD & AbundanceCaller>0.5)
+print("Pangenome choice - Percent of full gene set")
+100*length(unique(RNAseq.Pangenome.df$Transcript))/length(unique(RNAseq.VarianceFractions$Transcript))
+
+RNAseq.Pangenome.GOI<-unlist(lapply(unique(sort(RNAseq.Pangenome.df$gene_id)), function(X) strsplit(X,"\\.")[[1]][1]))
+
+#### Null set
+RNAseq.Null.df<-subset(RNAseq.VarianceFractions, MeanTPM>=THRESHOLD)
+print("Null set - Percent of full gene set")
+100*length(unique(RNAseq.Null.df$Transcript))/length(unique(RNAseq.VarianceFractions$Transcript))
+
+RNAseq.Null.GOI<-unlist(lapply(unique(sort(RNAseq.Null.df$gene_id)), function(X) strsplit(X,"\\.")[[1]][1]))
+
+
+write.table(RNAseq.Null.GOI, "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/RNAseqNull.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+```{r Import Genes WGBS}
+## WGBS Genes
+WGBS.GOI<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/WGBS/ORA/ENSEMBL.ID.Nearest.txt", stringsAsFactors=FALSE, header = TRUE, sep = " ")[,1]
+```
+
+
+```{r Import Genes SV Genes}
+## SV Genes - 24Kb regions enriched in SVs
+SV.GOI<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Unique_Genes_With_24kb_Regions_Enriched_in_SV.txt", stringsAsFactors=FALSE, header = TRUE)[,1]
+```
+
+```{r Import Genes Indel Genes}
+## Indel Genes - 24Kb regions enriched in Indels - PASS
+Indel.GOI.PASS<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Unique_Genes_With_24Kb_Regions_Enriched_in_Indel_PASS.txt", stringsAsFactors=FALSE, header = TRUE)[,1]
+Indel.GOI.RefCall<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Unique_Genes_With_24Kb_Regions_Enriched_in_Indel_RefCall.txt", stringsAsFactors=FALSE, header = TRUE)[,1]
+```
+
+```{r Import Genes SNP Genes}
+## SNP Genes - 24Kb regions enriched in SNPs - PASS
+SNP.GOI.PASS<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Unique_Genes_With_24Kb_Regions_Enriched_in_SNP_PASS.txt", stringsAsFactors=FALSE, header = TRUE)[,1]
+SNP.GOI.RefCall<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Unique_Genes_With_24Kb_Regions_Enriched_in_SNP_RefCall.txt", stringsAsFactors=FALSE, header = TRUE)[,1]
+```
+
+```{r How many genes in each set?, Include=TRUE}
+length(unique(SV.GOI))
+length(unique(Indel.GOI.PASS))
+length(unique(Indel.GOI.RefCall))
+length(unique(SNP.GOI.PASS))
+length(unique(SNP.GOI.RefCall))
+```
+
+```{r Combine Genes, Include=TRUE}
+# Combine and save files for Webgestalt ORA and Upset comparisons
+
+```
+
+
+```{r Plot Locations - Prep}
+
+## Setup Genome File
+GenomeLengths<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HPRC_General/GenomeLengths.csv", stringsAsFactors=FALSE, header = TRUE, sep = ",")
+
+### Filter out chrM, ChrX, ChrY
+GenomeLengths<-subset(GenomeLengths, !(Chromsome %in% c("chrM","chrX","chrY")) )
+
+GenomeFile<-data.frame(
+  Chromsome=GenomeLengths$Chromsome,
+  Start=rep(1,nrow(GenomeLengths)),
+  Stop=GenomeLengths$hg38  
+)
+
+## Setup Gene Files
+GencodeV29<-readGFF("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HPRC_General/gencode.v29.chr_patch_hapl_scaff.basic.annotation.gtf")
+
+### Simplify gene_id
+GencodeV29$gene_id<-unlist(lapply(GencodeV29$gene_id, function(X) strsplit(X,"\\.")[[1]][1]))
+
+#### Filter out chrM
+GencodeV29<-subset(GencodeV29, !(seqid %in% c("chrM","chrX","chrY")) )
+```
+
+```{r Plot Locations - RNAseq }
+### RNAseq
+#### Genome across samples
+RNAseq.Genome.Annotations<-unique(subset(GencodeV29, gene_id %in% RNAseq.Genome.GOI & type=="gene")[,c(9,1,4,5,2)])
+RNAseq.Genome.Annotations$source<-"Genome"
+
+### Genome specific to a sample
+RNAseq.GenomeXSample.Annotations<-unique(subset(GencodeV29, gene_id %in% RNAseq.GenomeXSample.GOI & type=="gene")[,c(9,1,4,5,2)])
+RNAseq.GenomeXSample.Annotations$source<-"SampleXGenome"
+
+### Pangenome
+RNAseq.Pangenome.Annotations<-unique(subset(GencodeV29, gene_id %in% RNAseq.Pangenome.GOI & type=="gene")[,c(9,1,4,5,2)])
+RNAseq.Pangenome.Annotations$source<-"Pangenome"
+
+### Combine RNAseq
+RNAseq.Annotations<-rbind(RNAseq.Genome.Annotations, RNAseq.GenomeXSample.Annotations)
+
+RNAseq.Annotations[RNAseq.Annotations$gene_id %in% names(table(RNAseq.Annotations$gene_id))[table(RNAseq.Annotations$gene_id)>1],]$source<-"Both"
+RNAseq.Annotations<-unique(RNAseq.Annotations)
+
+RNAseq.Annotations$source<-factor(RNAseq.Annotations$source, levels = c("Genome","SampleXGenome","Both"))
+
+RNAseq.Annotations<-subset(RNAseq.Annotations, !(seqid %in% c("chrM","chrX","chrY") ) )
+
+#### Super coarse
+
+RNAseq_SuperCoarse<-chromoMap(
+  list(GenomeFile),
+  list(RNAseq.Annotations),
+  fixed.window = T,
+  window.size = 1000000,
+  win.summary.display = T,
+  data_based_color_map = T,
+  data_type = "categorical",
+  data_colors = list(c("#d4b337","#ff7f5d","#bc316b")),
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+
+saveWidget(RNAseq_SuperCoarse, file = "RNAseq_ChromoMap.html")
+
+#### Fine
+RNAseq_Fine<-chromoMap(
+  list(GenomeFile),
+  list(RNAseq.Annotations),
+  fixed.window = T,
+  window.size = 50000,
+  win.summary.display = T,
+  data_based_color_map = T,
+  data_type = "categorical",
+  data_colors = list(c("#d4b337","#ff7f5d","#bc316b")),
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+
+saveWidget(RNAseq_Fine, file = "RNAseq_Fine_ChromoMap.html")
+```
+
+```{r Plot Locations - ATACseq}
+### ATACseq
+ATACseq.Annotations<-unique(subset(GencodeV29, gene_id %in% ATACseq.GOI & type=="gene")[,c(9,1,4,5,2)])
+ATACseq.Annotations$source<-"ATACseq"
+ATACseq.Annotations$source<-as.factor(ATACseq.Annotations$source)
+
+#### Super coarse
+ATACseq_SuperCourse<-chromoMap(
+  list(GenomeFile),
+  list(ATACseq.Annotations),
+  fixed.window = T,
+  window.size = 1000000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#2d5879",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+
+saveWidget(ATACseq_SuperCourse, file = "ATACseq_ChromoMap.html")
+
+#### Fine
+ATACseq_Fine<-chromoMap(
+  list(GenomeFile),
+  list(ATACseq.Annotations),
+  fixed.window = T,
+  window.size = 50000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#2d5879",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+
+saveWidget(ATACseq_Fine, file = "ATACseq_Fine_ChromoMap.html")
+```
+
+```{r Plot Locations - WGBS}
+### WGBS
+WGBS.Annotations<-unique(subset(GencodeV29, gene_id %in% WGBS.GOI & type=="gene")[,c(9,1,4,5,2)])
+WGBS.Annotations$source<-"WGBS"
+WGBS.Annotations$source<-as.factor(WGBS.Annotations$source)
+
+#### Super coarse
+WGBS_SuperCoarse<-chromoMap(
+  list(GenomeFile),
+  list(WGBS.Annotations),
+  fixed.window = T,
+  window.size = 1000000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#6e1cb7",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+
+saveWidget(WGBS_SuperCoarse, file = "WGBS_ChromoMap.html")
+
+#### Fine
+WGBS_Fine<-chromoMap(
+  list(GenomeFile),
+  list(WGBS.Annotations),
+  fixed.window = T,
+  window.size = 50000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#6e1cb7",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+
+saveWidget(WGBS_Fine, file = "WGBS_Fine_ChromoMap.html")
+```
+
+```{r Plot Locations - SV}
+### SV
+SV.Annotations<-unique(subset(GencodeV29, gene_id %in% SV.GOI & type=="gene")[,c(9,1,4,5,2)])
+SV.Annotations$source<-"SV"
+SV.Annotations$source<-as.factor(SV.Annotations$source)
+
+#### Fine
+chromoMap(
+  list(GenomeFile),
+  list(SV.Annotations),
+  fixed.window = T,
+  window.size = 50000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#4d5a22",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+```
+
+```{r Plot Locations - Indel - PASS}
+### Indel
+Indel.Annotations.PASS<-unique(subset(GencodeV29, gene_id %in% Indel.GOI.PASS & type=="gene")[,c(9,1,4,5,2)])
+Indel.Annotations.PASS$source<-"Indel"
+Indel.Annotations.PASS$source<-as.factor(Indel.Annotations.PASS$source)
+
+#### Fine
+chromoMap(
+  list(GenomeFile),
+  list(Indel.Annotations.PASS),
+  fixed.window = T,
+  window.size = 50000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#7e9435",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+```
+
+```{r Plot Locations - Indel - RefCall}
+### Indel
+Indel.Annotations.RefCall<-unique(subset(GencodeV29, gene_id %in% Indel.GOI.RefCall & type=="gene")[,c(9,1,4,5,2)])
+Indel.Annotations.RefCall$source<-"Indel"
+Indel.Annotations.RefCall$source<-as.factor(Indel.Annotations.RefCall$source)
+
+#### Fine
+chromoMap(
+  list(GenomeFile),
+  list(Indel.Annotations.RefCall),
+  fixed.window = T,
+  window.size = 50000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#7e9435",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+```
+
+```{r Plot Locations - SNP - PASS}
+### SNP
+SNP.Annotations.PASS<-unique(subset(GencodeV29, gene_id %in% SNP.GOI.PASS & type=="gene")[,c(9,1,4,5,2)])
+SNP.Annotations.PASS$source<-"SNP"
+SNP.Annotations.PASS$source<-as.factor(SNP.Annotations.PASS$source)
+
+#### Fine
+chromoMap(
+  list(GenomeFile),
+  list(SNP.Annotations.PASS),
+  fixed.window = T,
+  window.size = 50000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#b8dc37",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+```
+
+```{r Plot Locations - SNP - RefCall}
+### SNP
+SNP.Annotations.RefCall<-unique(subset(GencodeV29, gene_id %in% SNP.GOI.PASS & type=="gene")[,c(9,1,4,5,2)])
+SNP.Annotations.RefCall$source<-"SNP"
+SNP.Annotations.RefCall$source<-as.factor(SNP.Annotations.RefCall$source)
+
+#### Fine
+chromoMap(
+  list(GenomeFile),
+  list(SNP.Annotations.RefCall),
+  fixed.window = T,
+  window.size = 50000,
+  win.summary.display = T,
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  anno_col="#b8dc37",
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+```
+
+```{r Plot Locations - Combine}
+# Combine all
+AllAnnotations<-rbind(RNAseq.Genome.Annotations, RNAseq.GenomeXSample.Annotations, ATACseq.Annotations, WGBS.Annotations)
+
+## Course Flat
+chromoMap(
+  list(GenomeFile),
+  list(AllAnnotations),
+  fixed.window = T,
+  window.size = 1000000,
+  win.summary.display = T,
+  data_based_color_map = T,
+  data_type = "categorical",
+  data_colors = list(c("#2d5879","#d4b337","#bc316b","#6e1cb7")),
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+  )
+
+
+## Super Coarse 2D
+chromoMap(
+  list(GenomeFile),
+  list(AllAnnotations),
+  fixed.window = T,
+  window.size = 1000000,
+  chr.2D.plot = T,
+  plot_filter = list(c("col","byCategory")),
+  win.summary.display = T,
+  data_based_color_map = T,
+  data_type = "numeric",
+  anno_col="#555757",
+  ch2D.colors = c("#2d5879","#d4b337","#bc316b","#6e1cb7"),
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+
+## Coarse 2D
+chromoMap(
+  list(GenomeFile),
+  list(AllAnnotations),
+  fixed.window = T,
+  window.size = 250000,
+  chr.2D.plot = T,
+  plot_filter = list(c("col","byCategory")),
+  win.summary.display = T,
+  data_based_color_map = T,
+  data_type = "numeric",
+  anno_col="#555757",
+  ch2D.colors = c("#2d5879","#d4b337","#bc316b","#6e1cb7"),
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+
+## Fine 2D
+chromoMap(
+  list(GenomeFile),
+  list(AllAnnotations),
+  fixed.window = T,
+  window.size = 50000,
+  chr.2D.plot = T,
+  plot_filter = list(c("col","byCategory")),
+  win.summary.display = T,
+  data_based_color_map = T,
+  data_type = "numeric",
+  anno_col="#555757",
+  ch2D.colors = c("#2d5879","#d4b337","#bc316b","#6e1cb7"),
+  chr_color = "#AAAAAA50",
+  chr.scale.ticks=5,
+  vertical_grid=TRUE,
+  grid_array=seq(10,240,10)*1e6,
+  export.options=TRUE
+)
+```
+
+```{r Save Annotations}
+AllAnnotations$SV<-AllAnnotations$gene_id %in% SV.Annotations$gene_id
+AllAnnotations$Indel.PASS<-AllAnnotations$gene_id %in% Indel.Annotations.PASS$gene_id
+AllAnnotations$SNP.PASS<-AllAnnotations$gene_id %in% SNP.Annotations.PASS$gene_id
+AllAnnotations$Indel.RefCall<-AllAnnotations$gene_id %in% Indel.Annotations.RefCall$gene_id
+AllAnnotations$SNP.RefCall<-AllAnnotations$gene_id %in% SNP.Annotations.RefCall$gene_id
+
+write.table(AllAnnotations, "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/AllAnnotations.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+```{r Make long list of genes for upset plot}
+## This is to replaced the "ListOfGeneSets" file in: /Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/
+## It will be imported by the ORA_Panel.R script in the General_Code Repo
+ListOfGeneSets<-data.frame(
+  Gene=c(
+    AllAnnotations$gene_id,
+    SV.GOI,
+    Indel.GOI.PASS,
+    Indel.GOI.RefCall,
+    SNP.GOI.PASS,
+    SNP.GOI.RefCall
+    ),
+  Set=c(
+    AllAnnotations$source,
+    rep("SV",length(SV.GOI)),
+    rep("Indel.PASS",length(Indel.GOI.PASS)),
+    rep("Indel.RefCall",length(Indel.GOI.RefCall)),
+    rep("SNP.PASS",length(SNP.GOI.PASS)),
+    rep("SNP.RefCall",length(SNP.GOI.RefCall))
+    )
+)
+
+## Modify names
+ListOfGeneSets$Set[ListOfGeneSets$Set=="SampleXGenome"]<-"RNAseq GenomeXSample"
+ListOfGeneSets$Set[ListOfGeneSets$Set=="Genome"]<-"RNAseq Genome"
+
+write.table(ListOfGeneSets, "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Compare_GeneSets/ListOfGeneSets.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```

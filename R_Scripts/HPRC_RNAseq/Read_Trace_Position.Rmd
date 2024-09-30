@@ -1,0 +1,704 @@
+---
+title: "RNA-seq Read Position Analysis"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/ReadPositionTrace/")
+
+set.seed(0)
+
+library(ggplot2)
+require(cowplot)
+library(scales)
+library(gridExtra)
+library(grid)
+library(dplyr)
+library(tidyr)
+library(networkD3)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r linear import function}
+importChromosomePlacementFile<-function(FILENUMBER){
+  FILELIST<-dir("ProcessedFiles/")[grep("ChromosomePlaceMentTable.txt", dir("ProcessedFiles/"))]
+  
+  SAMPLE<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][5]
+  
+  REPLICATE<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][6]
+  
+  GENOME<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][7]
+  ANNOT<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][8]
+  
+  REFGENOME<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][9]
+  REFANNOT<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][10]
+  
+  FILENAME<-paste( c("ProcessedFiles/Lifted_Code_5_Reads",SAMPLE,REPLICATE,GENOME,ANNOT,REFGENOME,REFANNOT,"Positions_ChromosomePlaceMentTable.txt"), collapse = "_")
+  
+  ###print(FILENAME)
+  POSITIONCHANGEDF<-read.delim(FILENAME,header = FALSE)
+  colnames(POSITIONCHANGEDF)<-c("Chromosome.Reference","Chromosome.Query","Chromosome.ReferenceLiftedToQuery")
+  
+  POSITIONCHANGEDF$Frequency<-unlist(lapply(
+    trimws(POSITIONCHANGEDF$Chromosome.Reference, which = "left"),
+    function(LINE) strsplit(LINE,split = " ")[[1]][1]
+  ))
+  
+  POSITIONCHANGEDF$Chromosome.Reference<-unlist(lapply(
+    trimws(POSITIONCHANGEDF$Chromosome.Reference, which = "left"),
+    function(LINE) strsplit(LINE,split = " ")[[1]][2]
+  ))
+  
+  
+  POSITIONCHANGEDF$Sample<-SAMPLE
+  POSITIONCHANGEDF$Replicate<-REPLICATE
+  POSITIONCHANGEDF$Query.Genome<-GENOME
+  POSITIONCHANGEDF$Query.Annotation<-ANNOT
+  POSITIONCHANGEDF$Reference.Genome<-REFGENOME
+  POSITIONCHANGEDF$Reference.Annotation<-REFANNOT
+  
+  return(POSITIONCHANGEDF)
+}
+```
+
+```{r pangenome import function}
+importPGChromosomePlacementFile<-function(FILENUMBER){
+  FILELIST<-dir("PangenomePositionComparisons/")[grep("ChromosomePlaceMentTable.txt", dir("ProcessedFiles/"))]
+  
+  SAMPLE<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][1]
+  
+  REPLICATE<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][2]
+  
+  GENOME<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][3]
+  REFGENOME<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][4]
+  
+  FILENAME<-paste( c("PangenomePositionComparisons/",SAMPLE,"_",REPLICATE,"_",GENOME,"_",REFGENOME,"_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted__Positions_ChromosomePlaceMentTable.txt"), collapse = "")
+  
+  print(FILENAME)
+  POSITIONCHANGEDF<-read.delim(FILENAME,header = FALSE)
+  colnames(POSITIONCHANGEDF)<-c("Chromosome.Reference","Chromosome.Query")
+  
+  POSITIONCHANGEDF$Frequency<-unlist(lapply(
+    trimws(POSITIONCHANGEDF$Chromosome.Reference, which = "left"),
+    function(LINE) strsplit(LINE,split = " ")[[1]][1]
+  ))
+  
+  POSITIONCHANGEDF$Chromosome.Reference<-unlist(lapply(
+    trimws(POSITIONCHANGEDF$Chromosome.Reference, which = "left"),
+    function(LINE) strsplit(LINE,split = " ")[[1]][2]
+  ))
+  
+  
+  POSITIONCHANGEDF$Sample<-SAMPLE
+  POSITIONCHANGEDF$Replicate<-REPLICATE
+  POSITIONCHANGEDF$Query.Genome<-GENOME
+  POSITIONCHANGEDF$Reference.Genome<-REFGENOME
+
+  return(POSITIONCHANGEDF)
+}
+```
+
+```{r LoadData linear genomes data, include=TRUE}
+PositionChromosomeDataframe<-lapply(
+  1:80,
+  function(FILENUMBER) importChromosomePlacementFile(FILENUMBER)
+) %>% bind_rows()
+
+print("Data structure:")
+str(PositionChromosomeDataframe)
+
+print("Data structure after making frequency numeric:")
+PositionChromosomeDataframe$Frequency<-as.numeric(PositionChromosomeDataframe$Frequency)
+str(PositionChromosomeDataframe)
+
+### Filter out chrM entries
+PositionChromosomeDataframe<-subset(PositionChromosomeDataframe, Chromosome.Reference!="chrM" & Chromosome.Query!="chrM" )
+
+### Filter out CHM13 T2T annotation
+#PositionChromosomeDataframe.none<-subset(PositionChromosomeDataframe, Query.Annotation=="NA")
+#PositionChromosomeDataframe.t2t<-subset(PositionChromosomeDataframe, Query.Annotation=="t2t")
+#PositionChromosomeDataframe<-subset(PositionChromosomeDataframe, Query.Annotation=="gencode")
+
+### Change names
+PositionChromosomeDataframe$Query.Genome[grep("mat",PositionChromosomeDataframe$Query.Genome)]<-"Maternal"
+PositionChromosomeDataframe$Query.Genome[grep("pat",PositionChromosomeDataframe$Query.Genome)]<-"Paternal"
+
+print("Unique chromosomes:")
+print("Reference:")
+unique(PositionChromosomeDataframe$Chromosome.Reference)
+print("Query:")
+unique(PositionChromosomeDataframe$Chromosome.Query)
+```
+```{r LoadData pangenome data, include=TRUE}
+PangenomePositionChromosomeDataframe<-lapply(
+  1:10,
+  function(FILENUMBER) importPGChromosomePlacementFile(FILENUMBER)
+) %>% bind_rows()
+
+print("Data structure:")
+str(PangenomePositionChromosomeDataframe)
+
+print("Data structure after making frequency numeric:")
+PangenomePositionChromosomeDataframe$Frequency<-as.numeric(PangenomePositionChromosomeDataframe$Frequency)
+str(PangenomePositionChromosomeDataframe)
+
+
+### Filter out chrM entries
+PangenomePositionChromosomeDataframe<-subset(PangenomePositionChromosomeDataframe, Chromosome.Reference!="chrM" & Chromosome.Query!="chrM" )
+
+### Change names
+PangenomePositionChromosomeDataframe$Query.Genome<-"Pangenome"
+PangenomePositionChromosomeDataframe$Reference.Genome<-"hg38"
+
+PangenomePositionChromosomeDataframe$Query.Annotation<-"gencode"
+PangenomePositionChromosomeDataframe$Reference.Genome<-"gencode"
+
+print("Unique chromosomes:")
+print("Reference:")
+unique(PangenomePositionChromosomeDataframe$Chromosome.Reference)
+print("Query:")
+unique(PangenomePositionChromosomeDataframe$Chromosome.Query)
+```
+
+```{r Rename non-main chromosomes}
+#PangenomePositionChromosomeDataframe$Chromosome.Query[!(PangenomePositionChromosomeDataframe$Chromosome.Query %in% c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chrX","chrY","chrM"))]<-"Other"
+```
+
+```{r function to determine Same chromosome before liftover}
+calcSameChromBeforeLiftPercent<-function(SAMPLE,REPLICATE,QUERY,ANNOTATION){
+  TotalNumberOfEntries <- sum( subset(PositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION )$Frequency )
+  SameChromBeforeLift <- sum( subset(PositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION & Chromosome.Reference==Chromosome.Query)$Frequency )
+  
+  print(c(SAMPLE,REPLICATE,QUERY,ANNOTATION))
+  Output<-data.frame(
+    Sample=SAMPLE,
+    Replicate=REPLICATE,
+    Query=QUERY,
+    SameChr=SameChromBeforeLift,
+    Total=TotalNumberOfEntries,
+    Query.Annotation=ANNOTATION
+  )
+  return(Output)
+}
+```
+
+```{r Calculate Same chromosome before liftover}
+### Same chromosome before liftover
+calcSameChromBeforeLiftPercent<-function(SAMPLE,REPLICATE,QUERY,ANNOTATION){
+  TotalNumberOfEntries <- sum( subset(PositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION )$Frequency )
+  SameChromBeforeLift <- sum( subset(PositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION & Chromosome.Reference==Chromosome.Query)$Frequency )
+  
+  print(c(SAMPLE,REPLICATE,QUERY,ANNOTATION))
+  Output<-data.frame(
+    Sample=SAMPLE,
+    Replicate=REPLICATE,
+    Query=QUERY,
+    SameChr=SameChromBeforeLift,
+    Total=TotalNumberOfEntries,
+    Query.Annotation=ANNOTATION
+  )
+  return(Output)
+}
+
+### I really should have used sapply or something
+ChromosomeComparisonBeforelift.Dataframe<-lapply(
+  unique(PositionChromosomeDataframe$Sample),
+  function(SAMPLE) lapply(unique(PositionChromosomeDataframe$Replicate),
+                          function(REPLICATE) lapply(unique(PositionChromosomeDataframe$Query.Genome),
+                                                     function(ANNOTATION) lapply(unique(PositionChromosomeDataframe$Query.Annotation),
+                                                                                function(QUERY) calcSameChromBeforeLiftPercent(SAMPLE,REPLICATE,ANNOTATION,QUERY)
+      ) %>% bind_rows()
+    ) %>% bind_rows()
+  ) %>% bind_rows()
+) %>% bind_rows()
+
+# Filter out non-sense comparisons like GRCh38 gencode as query
+ChromosomeComparisonBeforelift.Dataframe<-subset(ChromosomeComparisonBeforelift.Dataframe, !(Query=="GRCh38" & Query.Annotation != "NA") )
+ChromosomeComparisonBeforelift.Dataframe<-subset(ChromosomeComparisonBeforelift.Dataframe, !(Query!="CHM13" & Query.Annotation == "t2t") )
+
+ChromosomeComparisonBeforelift.Dataframe$Percent<-ChromosomeComparisonBeforelift.Dataframe$SameChr/ChromosomeComparisonBeforelift.Dataframe$Total
+```
+
+```{r Plot Same chromosome before liftover all, include=TRUE}
+Plot.SameChrBefore.All<-ggplot(ChromosomeComparisonBeforelift.Dataframe,aes(x=Query,y=Percent*100,fill=Replicate))+
+  geom_boxplot(outlier.alpha = 0)+
+  geom_jitter(position=position_jitterdodge(jitter.width = 0.25))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  CS.THEME+
+  ylab("%Map to same chromosome")+
+  ggtitle("Reads that map to\nsame chromosome before liftover")+
+  facet_grid(Query.Annotation~.)+
+  #theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  theme(legend.position = "bottom")
+
+Plot.SameChrBefore.All
+```
+
+```{r Plot Same chromosome before liftover, include=TRUE}
+Plot.SameChrBefore<-ggplot(subset(ChromosomeComparisonBeforelift.Dataframe,Query.Annotation=="gencode"),aes(x=Query,y=Percent*100,fill=Replicate))+
+  geom_boxplot(outlier.alpha = 0)+
+  geom_jitter(position=position_jitterdodge(jitter.width = 0.25))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  CS.THEME+
+  ylab("%Map to same chromosome")+
+  ggtitle("Reads that map to\nsame chromosome before liftover")+
+  #theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  theme(legend.position = "bottom")
+
+Plot.SameChrBefore
+```
+
+```{r function determine percent of linear that can lift over}
+### Can liftover
+canLiftoverPercent<-function(SAMPLE,REPLICATE,ANNOTATION,QUERY){
+  TotalNumberOfEntries <- sum( subset(PositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION)$Frequency )
+  CanLift <- sum( subset(PositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION & Chromosome.ReferenceLiftedToQuery!="FAILEDLIFT")$Frequency )
+  
+  #print(c(SAMPLE,REPLICATE,ANNOTATION,QUERY))
+  Output<-data.frame(
+    Sample=SAMPLE,
+    Replicate=REPLICATE,
+    Query=QUERY,
+    NoLiftover=CanLift,
+    Total=TotalNumberOfEntries,
+    Query.Annotation=ANNOTATION
+  )
+  
+  return(Output)
+}
+```
+
+```{r Calculate percent of linear that can lift over}
+CanLiftover.Dataframe<-lapply(
+  unique(PositionChromosomeDataframe$Sample),
+  function(SAMPLE) lapply(unique(PositionChromosomeDataframe$Replicate),
+                          function(REPLICATE) lapply(unique(PositionChromosomeDataframe$Query.Genome),
+                                                     function(QUERY) lapply(unique(PositionChromosomeDataframe$Query.Annotation),
+                                                                                function(ANNOTATION) canLiftoverPercent(SAMPLE,REPLICATE,ANNOTATION,QUERY)
+                                                                                
+                                                                                ) %>% bind_rows()
+                                                     ) %>% bind_rows()
+                          ) %>% bind_rows()
+) %>% bind_rows()
+
+
+CanLiftover.Dataframe$Percent<-CanLiftover.Dataframe$NoLiftover/CanLiftover.Dataframe$Total
+
+# Filter out non-sense comparisons like GRCh38 gencode as query
+CanLiftover.Dataframe<-subset(CanLiftover.Dataframe, !(Query=="GRCh38" & Query.Annotation != "NA") )
+CanLiftover.Dataframe<-subset(CanLiftover.Dataframe, !(Query!="CHM13" & Query.Annotation == "t2t") )
+
+```
+
+
+```{r Plot percent of linear that can lift over all, include=TRUE}
+Plot.CanLiftover.All<-ggplot(CanLiftover.Dataframe,aes(x=Query,y=Percent*100,fill=Replicate))+
+  geom_boxplot(outlier.alpha = 0)+
+  geom_jitter(position=position_jitterdodge(jitter.width = 0.25))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  CS.THEME+
+  ylab("%Reads that liftover")+
+  ggtitle("Reads that do lift over\n")+
+  facet_grid(Query.Annotation~.)+
+  #theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  theme(legend.position = "bottom")
+
+Plot.CanLiftover.All
+```
+
+```{r Plot percent of linear that can lift over, include=TRUE}
+Plot.CanLiftover<-ggplot(subset(CanLiftover.Dataframe,Query.Annotation=="gencode"),aes(x=Query,y=Percent*100,fill=Replicate))+
+  geom_boxplot(outlier.alpha = 0)+
+  geom_jitter(position=position_jitterdodge(jitter.width = 0.25))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  CS.THEME+
+  ylab("%Reads that liftover")+
+  ggtitle("Reads that do lift over\n")+
+  #theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  theme(legend.position = "bottom")
+
+
+Plot.CanLiftover
+```
+
+```{r function determine percent of linear that same chromosome after liftover}
+### Same chromosome after liftover
+calcSameChromAfterLiftPercent<-function(SAMPLE,REPLICATE,QUERY,ANNOTATION){
+  TotalNumberOfEntries <- sum( subset(PositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION)$Frequency )
+  SameChromBeforeLift <- sum( subset(PositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION & Chromosome.Reference==Chromosome.ReferenceLiftedToQuery)$Frequency )
+  
+  #print(c(SAMPLE,REPLICATE,QUERY,ANNOTATION))
+  Output<-data.frame(
+    Sample=SAMPLE,
+    Replicate=REPLICATE,
+    Query=QUERY,
+    SameChr=SameChromBeforeLift,
+    Total=TotalNumberOfEntries,
+    Query.Annotation=ANNOTATION
+  )
+  
+  return(Output)
+}
+```
+
+```{r Calculate percent of linear that same chromosome after liftover}
+ChromosomeComparisonAfterlift.Dataframe<-lapply(
+  unique(PositionChromosomeDataframe$Sample),
+  function(SAMPLE) lapply(unique(PositionChromosomeDataframe$Replicate),
+                          function(REPLICATE) lapply(unique(PositionChromosomeDataframe$Query.Genome),
+                                                     function(QUERY) lapply(unique(PositionChromosomeDataframe$Query.Annotation),
+                                                                            function(ANNOTATION) calcSameChromAfterLiftPercent(SAMPLE,REPLICATE,QUERY,ANNOTATION)
+                                                                            ) %>% bind_rows()
+                                                     ) %>% bind_rows()
+                          ) %>% bind_rows()
+  ) %>% bind_rows()
+
+
+# Filter out non-sense comparisons like GRCh38 gencode as query
+ChromosomeComparisonAfterlift.Dataframe<-subset(ChromosomeComparisonAfterlift.Dataframe, !(Query=="GRCh38" & Query.Annotation != "NA") )
+ChromosomeComparisonAfterlift.Dataframe<-subset(ChromosomeComparisonAfterlift.Dataframe, !(Query!="CHM13" & Query.Annotation == "t2t") )
+
+ChromosomeComparisonAfterlift.Dataframe$Percent<-ChromosomeComparisonAfterlift.Dataframe$SameChr/ChromosomeComparisonAfterlift.Dataframe$Total
+
+```
+
+```{r function to determine percent of pangenome that same chromosome after surjection}
+calcSameChromAfterSurjPercent<-function(SAMPLE,REPLICATE,QUERY){
+  TotalNumberOfEntries <- sum( subset(PangenomePositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY)$Frequency )
+  SameChromBeforeLift <- sum( subset(PangenomePositionChromosomeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Chromosome.Query==Chromosome.Reference)$Frequency )
+
+  Output<-data.frame(
+    Sample=SAMPLE,
+    Replicate=REPLICATE,
+    Query=QUERY,
+    SameChr=SameChromBeforeLift,
+    Total=TotalNumberOfEntries
+  )
+  
+  return(Output)
+}
+```
+
+```{r Calculate percent of pangenome that same chromosome after surjection}
+ChromosomeComparisonAfterSurj.Dataframe<-lapply(
+  unique(PangenomePositionChromosomeDataframe$Sample),
+  function(SAMPLE) lapply(unique(PangenomePositionChromosomeDataframe$Replicate),
+                          function(REPLICATE) lapply(unique(PangenomePositionChromosomeDataframe$Query.Genome),
+                                                     function(QUERY) calcSameChromAfterSurjPercent(SAMPLE,REPLICATE,QUERY)
+                          ) %>% bind_rows()
+  ) %>% bind_rows()
+) %>% bind_rows()
+
+head(ChromosomeComparisonAfterSurj.Dataframe)
+ChromosomeComparisonAfterSurj.Dataframe$Query.Annotation<-"gencode"
+ChromosomeComparisonAfterSurj.Dataframe$Percent<-ChromosomeComparisonAfterSurj.Dataframe$SameChr/ChromosomeComparisonAfterSurj.Dataframe$Total
+```
+
+```{r combine dataframes, include=TRUE}
+ChromosomeComparisonAfterliftSurject_Combined<-rbind(ChromosomeComparisonAfterlift.Dataframe,ChromosomeComparisonAfterSurj.Dataframe)
+
+print(ChromosomeComparisonAfterliftSurject_Combined)
+```
+
+```{r Plot percent of linear that same chromosome after liftover all, include=TRUE}
+Plot.SameChrAfter.All<-ggplot(ChromosomeComparisonAfterliftSurject_Combined,aes(x=Query,y=Percent*100,fill=Replicate))+
+  geom_boxplot(outlier.alpha = 0)+
+  geom_jitter(position=position_jitterdodge(jitter.width = 0.25))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  CS.THEME+
+  ylab("%Map to same chromosome")+
+  ggtitle("Reads that map to\nsame chromosome after liftover")+
+  facet_grid(Query.Annotation~.)+
+  #theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  theme(legend.position = "bottom")
+
+Plot.SameChrAfter.All
+```
+
+```{r Plot percent of linear that same chromosome after liftover, include=TRUE}
+Plot.SameChrAfter<-ggplot(subset(ChromosomeComparisonAfterliftSurject_Combined,Query.Annotation=="gencode"),aes(x=Query,y=Percent*100,fill=Replicate))+
+  geom_boxplot(outlier.alpha = 0)+
+  geom_jitter(position=position_jitterdodge(jitter.width = 0.25))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  CS.THEME+
+  ylab("%Map to same chromosome")+
+  ggtitle("Reads that map to\nsame chromosome after liftover")+
+  #theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  theme(legend.position = "bottom")
+
+Plot.SameChrAfter
+```
+
+```{r Plot heatmap of pangenome chromosome placement relative to hg38, include=TRUE, fig.width=32, fig.height=160}
+placement_relative_to_hg38_panel<-ggplot(PangenomePositionChromosomeDataframe,aes(x=Chromosome.Reference,y=Chromosome.Query,fill=Frequency))+
+  geom_tile()+
+  scale_fill_viridis()+
+  facet_grid(Sample~Replicate)+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8), axis.text.y = element_text(size = 8))
+
+placement_relative_to_hg38_panel
+```
+
+```{r save placement_relative_to_hg38_panel}
+ggsave2(filename = "Pangenome_Chromosome_Placement_Relative_To_hg38.png",plot = placement_relative_to_hg38_panel,units = "in", height = 160, width = 32, limitsize = FALSE)
+```
+
+```{r function import linear position change data}
+##### Position change
+importPositionChangeFile<-function(FILENUMBER){
+  FILELIST<-dir("ProcessedFiles/")[grep("PositionChangeTable.txt", dir("ProcessedFiles/"))]
+  
+  SAMPLE<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][5]
+  
+  REPLICATE<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][6]
+  
+  GENOME<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][7]
+  ANNOT<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][8]
+  
+  REFGENOME<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][9]
+  REFANNOT<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][10]
+  
+  FILENAME<-paste( c("ProcessedFiles/Lifted_Code_5_Reads",SAMPLE,REPLICATE,GENOME,ANNOT,REFGENOME,REFANNOT,"Positions_PositionChangeTable.txt"), collapse = "_")
+  
+  POSITIONCHANGEDF<-read.delim(FILENAME,header = FALSE)
+  colnames(POSITIONCHANGEDF)<-c("PositionChangeValue")
+  
+  POSITIONCHANGEDF$Frequency<-unlist(lapply(
+    trimws(POSITIONCHANGEDF$PositionChangeValue, which = "left"),
+    function(LINE) strsplit(LINE,split = " ")[[1]][1]
+  ))
+
+  POSITIONCHANGEDF$PositionChangeValue<-unlist(lapply(
+    trimws(POSITIONCHANGEDF$PositionChangeValue, which = "left"),
+    function(LINE) strsplit(LINE,split = " ")[[1]][2]
+  ))
+  
+  
+  POSITIONCHANGEDF$Sample<-SAMPLE
+  POSITIONCHANGEDF$Replicate<-REPLICATE
+  POSITIONCHANGEDF$Query.Genome<-GENOME
+  POSITIONCHANGEDF$Query.Annotation<-ANNOT
+  POSITIONCHANGEDF$Reference.Genome<-REFGENOME
+  POSITIONCHANGEDF$Reference.Annotation<-REFANNOT
+
+  return(POSITIONCHANGEDF)
+}
+```
+
+```{r import linear position change data, include=TRUE}
+PositionChangeDataframe<-lapply(
+  1:80,
+  function(FILENUMBER) importPositionChangeFile(FILENUMBER)
+    ) %>% bind_rows()
+
+print("Data structure:")
+str(PositionChangeDataframe)
+
+print(head(PositionChangeDataframe))
+
+PositionChangeDataframe$Frequency<-as.numeric(PositionChangeDataframe$Frequency)
+
+# Filter out non-sense comparisons like GRCh38 gencode as query
+PositionChangeDataframe<-subset(PositionChangeDataframe, !(Query.Genome =="GRCh38" & Query.Annotation != "NA") )
+PositionChangeDataframe<-subset(PositionChangeDataframe, !(Query.Genome !="CHM13" & Query.Annotation == "t2t") )
+
+### Change names
+PositionChangeDataframe$Query.Genome[grep("mat",PositionChangeDataframe$Query.Genome)]<-"Maternal"
+PositionChangeDataframe$Query.Genome[grep("pat",PositionChangeDataframe$Query.Genome)]<-"Paternal"
+```
+
+```{r function import pangenome position change data}
+importPGPositionChangeFile<-function(FILENUMBER){
+  FILELIST<-dir("PangenomePositionComparisons/")[grep("PositionChangeTable.txt", dir("PangenomePositionComparisons/"))]
+  
+  SAMPLE<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][1]
+  
+  REPLICATE<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][2]
+  
+  GENOME<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][3]
+  ANNOT<-"gencode"
+  
+  REFGENOME<-strsplit(FILELIST[FILENUMBER], split = "_")[[1]][4]
+  REFANNOT<-"gencode"
+  
+  
+  FILENAME<-paste( c("PangenomePositionComparisons/",SAMPLE,"_",REPLICATE,"_",GENOME,"_",REFGENOME,"_mpmap_alignment_spliced_PG_graph.ref_paths_ChromNamefixed.sorted__Positions_PositionChangeTable.txt"), collapse = "")
+  
+  POSITIONCHANGEDF<-read.delim(FILENAME,header = FALSE)
+  colnames(POSITIONCHANGEDF)<-c("PositionChangeValue")
+  
+  POSITIONCHANGEDF$Frequency<-unlist(lapply(
+    trimws(POSITIONCHANGEDF$PositionChangeValue, which = "left"),
+    function(LINE) strsplit(LINE,split = " ")[[1]][1]
+  ))
+
+  POSITIONCHANGEDF$PositionChangeValue<-unlist(lapply(
+    trimws(POSITIONCHANGEDF$PositionChangeValue, which = "left"),
+    function(LINE) strsplit(LINE,split = " ")[[1]][2]
+  ))
+  
+  
+  POSITIONCHANGEDF$Sample<-SAMPLE
+  POSITIONCHANGEDF$Replicate<-REPLICATE
+  POSITIONCHANGEDF$Query.Genome<-GENOME
+  POSITIONCHANGEDF$Query.Annotation<-ANNOT
+  POSITIONCHANGEDF$Reference.Genome<-REFGENOME
+  POSITIONCHANGEDF$Reference.Annotation<-REFANNOT
+
+  return(POSITIONCHANGEDF)
+}
+```
+
+```{r import pangenome position change data, include=TRUE}
+PangenomePositionChangeDataframe<-lapply(
+  1:10,
+  function(FILENUMBER) importPGPositionChangeFile(FILENUMBER)
+    ) %>% bind_rows()
+
+print("Data structure:")
+str(PangenomePositionChangeDataframe)
+
+print(head(PangenomePositionChangeDataframe))
+
+PangenomePositionChangeDataframe$Frequency<-as.numeric(PangenomePositionChangeDataframe$Frequency)
+
+### Change names
+PangenomePositionChangeDataframe$Query.Genome[grep("pangenome",PangenomePositionChangeDataframe$Query.Genome)]<-"Pangenome"
+PangenomePositionChangeDataframe$Reference.Genome<-"hg38"
+
+```
+
+```{r combine position change dataframes}
+PositionChangeDataframe<-rbind(PositionChangeDataframe,PangenomePositionChangeDataframe)
+
+PositionChangeDataframe$PositionChangeValue<-as.numeric(PositionChangeDataframe$PositionChangeValue)
+```
+
+```{r pangenome percent of reads changing position as a function of distance threshold, include=TRUE}
+100*sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome" & abs(PositionChangeValue) == 0)$Frequency)/sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome")$Frequency)
+100*sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome" & abs(PositionChangeValue) < 2)$Frequency)/sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome")$Frequency)
+100*sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome" & abs(PositionChangeValue) < 4)$Frequency)/sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome")$Frequency)
+100*sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome" & abs(PositionChangeValue) < 8)$Frequency)/sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome")$Frequency)
+100*sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome" & abs(PositionChangeValue) < 16)$Frequency)/sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome")$Frequency)
+100*sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome" & abs(PositionChangeValue) < 32)$Frequency)/sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome")$Frequency)
+100*sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome" & abs(PositionChangeValue) < 64)$Frequency)/sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome")$Frequency)
+100*sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome" & abs(PositionChangeValue) < 128)$Frequency)/sum(subset(PositionChangeDataframe, Query.Genome=="Pangenome")$Frequency)
+```
+
+```{r plot Pangenome position change distribution, include=TRUE, fig.width=16, fig.height=8}
+Plot.PositionChange<-ggplot(subset(PositionChangeDataframe, Query.Genome=="Pangenome"),aes(x=PositionChangeValue,y=Frequency,fill=Query.Genome))+
+  geom_vline(xintercept = 0, color = "red", alpha=0.2)+
+  geom_point(stroke=0, size=0.5)+
+  scale_y_continuous(trans = "log10", labels = scales::comma)+
+  scale_x_continuous(labels = scales::comma)+
+  ylab("Number of Reads")+
+  facet_grid(Sample~Replicate)+
+  CS.THEME
+
+Plot.PositionChange
+```
+
+```{r function calculate same position}
+### Same Position
+calcSamePosition<-function(SAMPLE,REPLICATE,QUERY,ANNOTATION){
+  TotalNumberOfEntries <- sum( subset(PositionChangeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION)$Frequency )
+  SamePosition <- sum( subset(PositionChangeDataframe, Sample==SAMPLE & Replicate==REPLICATE & Query.Genome==QUERY & Query.Annotation==ANNOTATION & PositionChangeValue=="0")$Frequency )
+  
+  print(c(SAMPLE,REPLICATE,QUERY,ANNOTATION))
+  Output<-data.frame(
+    Sample=SAMPLE,
+    Replicate=REPLICATE,
+    Query=QUERY,
+    SamePosition=SamePosition,
+    Total=TotalNumberOfEntries,
+    Query.Annotation=ANNOTATION
+  )
+  
+  return(Output)
+}
+```
+
+```{r calculate same position, include=TRUE}
+PositionComparison.Dataframe<-lapply(
+  unique(PositionChangeDataframe$Sample),
+  function(SAMPLE) lapply(unique(PositionChangeDataframe$Replicate),
+                          function(REPLICATE) lapply(unique(PositionChangeDataframe$Query.Genome),
+                                                     function(QUERY) lapply(unique(PositionChangeDataframe$Query.Annotation),
+                                                                                function(ANNOTATION) calcSamePosition(SAMPLE,REPLICATE,QUERY,ANNOTATION)
+                                                                                ) %>% bind_rows()
+                                                     ) %>% bind_rows()
+                          ) %>% bind_rows()
+) %>% bind_rows()
+
+# Filter out non-sense comparisons like GRCh38 gencode as query
+PositionComparison.Dataframe<-subset(PositionComparison.Dataframe, !(Query =="GRCh38" & Query.Annotation != "NA") )
+PositionComparison.Dataframe<-subset(PositionComparison.Dataframe, !(Query !="CHM13" & Query.Annotation == "t2t") )
+
+
+PositionComparison.Dataframe$Percent<-PositionComparison.Dataframe$SamePosition/PositionComparison.Dataframe$Total
+```
+
+```{r plot Same position all, include=TRUE}
+Plot.SamePosition.All<-ggplot(PositionComparison.Dataframe,aes(x=Query,y=Percent*100,fill=Replicate))+
+  geom_boxplot(outlier.alpha = 0)+
+  geom_jitter(position=position_jitterdodge(jitter.width = 0.25))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  CS.THEME+
+  ylab("%Map to same position")+
+  ggtitle("Reads that map to\nsame position after liftover")+
+  facet_grid(Query.Annotation~.)+
+  #theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  theme(legend.position = "bottom")
+
+Plot.SamePosition.All
+```
+
+```{r plot Same position, include=TRUE}
+Plot.SamePosition<-ggplot(subset(PositionComparison.Dataframe, Query.Annotation=="gencode"),aes(x=Query,y=Percent*100,fill=Replicate))+
+  geom_boxplot(outlier.alpha = 0)+
+  geom_jitter(position=position_jitterdodge(jitter.width = 0.25))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  CS.THEME+
+  ylab("%Map to same position")+
+  ggtitle("Reads that map to\nsame position after liftover")+
+  #theme(axis.text.x = element_text(angle = 30, hjust = 1))+
+  theme(legend.position = "bottom")
+
+Plot.SamePosition
+```
+
+```{r plot panel all, include=TRUE, fig.width=18, fig.height=5}
+Panel.All<-plot_grid(
+  Plot.SameChrBefore.All,
+  Plot.CanLiftover.All,
+  Plot.SameChrAfter.All,
+  Plot.SamePosition.All,
+  ncol=4,
+  labels = c("A","B","C","D")
+)
+
+ggsave2(filename = "RNAseq_Read_Position_Trace_Panel_All.png",plot = Panel.All,units = "in", height = 8, width = 20)
+
+Panel.All
+```
+
+```{r plot panel, include=TRUE, fig.width=18, fig.height=5}
+Panel<-plot_grid(
+  Plot.SameChrBefore,
+  Plot.CanLiftover,
+  Plot.SameChrAfter,
+  Plot.SamePosition,
+  ncol=4,
+  labels = c("H","I","J","K")
+)
+
+ggsave2(filename = "RNAseq_Read_Position_Trace_Panel.png",plot = Panel,units = "in", height = 5, width = 18)
+
+Panel
+```

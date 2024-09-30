@@ -1,0 +1,455 @@
+---
+title: "ATAC-seq Altered Read Fate Coverage Analysis"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/")
+
+set.seed(0)
+
+library(ggplot2)
+require(cowplot)
+library(scales)
+library(gridExtra)
+library(grid)
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(rtracklayer)
+library(Rsamtools)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r LoadData}
+# Load bedgraph files
+# Sample HG00621 replicate A only
+# Fates correspond to a 3x3 pairwise grid.
+# 1: unmapped in both
+# 2: unmapped in ref and unique in pan
+# 3: unmapped in ref and multimapped in pan
+# 4: unique in ref and unmapped in pan
+# 5: unique in both
+# 6: unique in ref and multimapped in pan
+# 7: multimapped in ref and unmapped in pan
+# 8: multimapped in both
+# 9: multimapped in ref and unique in pan
+# Fate classes extracted for ref alignments: 4, 6, 7, 8
+# Fate classes extracted for pangenome alignments: 2, 3, 6, 8
+# Object naming: {Sample}_{Replicate}_{Genome}_{hg38 fate}_{pangenome fate}
+
+
+HG00621_A_hg38_unique_unmapped <- import("Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_4_reference.bedgraph.gz")
+HG00621_A_hg38_unique_multimap <- import("Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_6_reference.bedgraph.gz")
+HG00621_A_hg38_multimap_unmapped <- import("Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_7_reference.bedgraph.gz")
+HG00621_A_hg38_multimap_multimap <- import("Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_8_reference.bedgraph.gz")
+
+HG00621_A_pan_unmapped_unique <- import("Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_2_query.bedgraph.gz")
+HG00621_A_pan_unmapped_multimap <- import("Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_3_query.bedgraph.gz")
+HG00621_A_pan_unique_multimap <- import("Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_6_query.bedgraph.gz")
+HG00621_A_pan_multimap_multimap <- import("Pangenome_ReadTrace_fate_BedGraphs/BedGraphs/Renamed_sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_8_query.bedgraph.gz")
+```
+
+```{r Convert to Data Frame for ggplot2}
+# Convert to data frame for ggplot2
+HG00621_A_hg38_unique_unmapped_df <- as.data.frame(HG00621_A_hg38_unique_unmapped)
+HG00621_A_hg38_unique_multimap_df <- as.data.frame(HG00621_A_hg38_unique_multimap)
+HG00621_A_hg38_multimap_unmapped_df <- as.data.frame(HG00621_A_hg38_multimap_unmapped)
+HG00621_A_hg38_multimap_multimap_df <- as.data.frame(HG00621_A_hg38_multimap_multimap)
+
+HG00621_A_pan_unmapped_unique_df <- as.data.frame(HG00621_A_pan_unmapped_unique)
+HG00621_A_pan_unmapped_multimap_df <- as.data.frame(HG00621_A_pan_unmapped_multimap)
+HG00621_A_pan_unique_multimap_df <- as.data.frame(HG00621_A_pan_unique_multimap)
+HG00621_A_pan_multimap_multimap_df <- as.data.frame(HG00621_A_pan_multimap_multimap)
+```
+
+```{r Calculate fraction of signal per seqname}
+calculateSeqNameSumSignal<-function(DF, SEQNAME){
+  OUT<-data.frame(
+    seqname = SEQNAME,
+    sum = sum(DF$score[DF$seqnames==SEQNAME]),
+    Fraction = sum(DF$score[DF$seqnames==SEQNAME])/sum(DF$score)
+  )
+  
+  return(OUT)
+}
+
+
+HG00621_A_hg38_unique_unmapped_df.SumOverSeqs<-lapply(unique(HG00621_A_hg38_unique_unmapped_df$seqnames), function(SEQ) calculateSeqNameSumSignal(HG00621_A_hg38_unique_unmapped_df, SEQ) ) %>% bind_rows()
+
+HG00621_A_hg38_unique_multimap_df.SumOverSeqs<-lapply(unique(HG00621_A_hg38_unique_multimap_df$seqnames), function(SEQ) calculateSeqNameSumSignal(HG00621_A_hg38_unique_multimap_df, SEQ) ) %>% bind_rows()
+
+HG00621_A_hg38_multimap_unmapped_df.SumOverSeqs<-lapply(unique(HG00621_A_hg38_multimap_unmapped_df$seqnames), function(SEQ) calculateSeqNameSumSignal(HG00621_A_hg38_multimap_unmapped_df, SEQ) ) %>% bind_rows()
+
+HG00621_A_hg38_multimap_multimap_df.SumOverSeqs<-lapply(unique(HG00621_A_hg38_multimap_multimap_df$seqnames), function(SEQ) calculateSeqNameSumSignal(HG00621_A_hg38_multimap_multimap_df, SEQ) ) %>% bind_rows()
+
+HG00621_A_pan_unmapped_unique_df.SumOverSeqs<-lapply(unique(HG00621_A_pan_unmapped_unique_df$seqnames), function(SEQ) calculateSeqNameSumSignal(HG00621_A_pan_unmapped_unique_df, SEQ) ) %>% bind_rows()
+
+HG00621_A_pan_unmapped_multimap_df.SumOverSeqs<-lapply(unique(HG00621_A_pan_unmapped_multimap_df$seqnames), function(SEQ) calculateSeqNameSumSignal(HG00621_A_pan_unmapped_multimap_df, SEQ) ) %>% bind_rows()
+
+HG00621_A_pan_unique_multimap_df.SumOverSeqs<-lapply(unique(HG00621_A_pan_unique_multimap_df$seqnames), function(SEQ) calculateSeqNameSumSignal(HG00621_A_pan_unique_multimap_df, SEQ) ) %>% bind_rows()
+
+HG00621_A_pan_multimap_multimap_df.SumOverSeqs<-lapply(unique(HG00621_A_pan_multimap_multimap_df$seqnames), function(SEQ) calculateSeqNameSumSignal(HG00621_A_pan_multimap_multimap_df, SEQ) ) %>% bind_rows()
+```
+
+```{r combine SumOverSeqs}
+HG00621_A_hg38_unique_unmapped_df.SumOverSeqs$Fate <- "hg38_unique_unmapped"
+HG00621_A_hg38_unique_multimap_df.SumOverSeqs$Fate <- "hg38_unique_multimap"
+HG00621_A_hg38_multimap_unmapped_df.SumOverSeqs$Fate <- "hg38_multimap_unmapped"
+HG00621_A_hg38_multimap_multimap_df.SumOverSeqs$Fate <- "hg38_multimap_multimap"
+
+HG00621_A_pan_unmapped_unique_df.SumOverSeqs$Fate <- "pan_unmapped_unique"
+HG00621_A_pan_unmapped_multimap_df.SumOverSeqs$Fate <- "pan_unmapped_multimap"
+HG00621_A_pan_unique_multimap_df.SumOverSeqs$Fate <- "pan_unique_multimap"
+HG00621_A_pan_multimap_multimap_df.SumOverSeqs$Fate <- "pan_multimap_multimap"
+
+HG00621_A_SumOverSeqs<-rbind(HG00621_A_hg38_unique_unmapped_df.SumOverSeqs,
+                             HG00621_A_hg38_unique_multimap_df.SumOverSeqs,
+                             HG00621_A_hg38_multimap_unmapped_df.SumOverSeqs,
+                             HG00621_A_hg38_multimap_multimap_df.SumOverSeqs,
+                             HG00621_A_pan_unmapped_unique_df.SumOverSeqs,
+                             HG00621_A_pan_unmapped_multimap_df.SumOverSeqs,
+                             HG00621_A_pan_unique_multimap_df.SumOverSeqs,
+                             HG00621_A_pan_multimap_multimap_df.SumOverSeqs)
+
+# Order by chromosome
+HG00621_A_SumOverSeqs$seqname <- factor(HG00621_A_SumOverSeqs$seqname, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+```
+
+```{r Plotting fraction of signal per seqname, include=TRUE, fig.width=16, fig.height=24}
+ggplot() +
+  geom_bar(data = HG00621_A_SumOverSeqs, aes(y = seqname, x = Fraction, fill = Fate), stat = "identity", position = "dodge") +
+  labs(title = "Fraction of signal per seqname",
+       x = "seqname",
+       y = "Fraction")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_x_continuous(labels = scales::percent)+
+  theme(legend.position = "bottom")
+```
+
+```{r What fraction of fate shifting signal is mitochondrial DNA?, include=TRUE}
+print("pangenome signal that is unmapped mapped in hg38 but uniquely mapped in pangenome")
+sum(HG00621_A_pan_unmapped_unique_df$score[HG00621_A_pan_unmapped_unique_df$seqnames == "chrM"])/sum(HG00621_A_pan_unmapped_unique_df$score)
+print("pangenome signal that is unmapped mapped in hg38 but multimapped in pangenome")
+sum(HG00621_A_pan_unmapped_multimap_df$score[HG00621_A_pan_unmapped_multimap_df$seqnames == "chrM"])/sum(HG00621_A_pan_unmapped_multimap_df$score)
+print("pangenome signal that is uniquely mapped in hg38 but multimapped in pangenome")
+sum(HG00621_A_pan_unique_multimap_df$score[HG00621_A_pan_unique_multimap_df$seqnames == "chrM"])/sum(HG00621_A_pan_unique_multimap_df$score)
+print("pangenome signal that is uniquely in hg38 and multimapped in pangenome")
+sum(HG00621_A_pan_unique_multimap_df$score[HG00621_A_pan_unique_multimap_df$seqnames == "chrM"])/sum(HG00621_A_pan_unique_multimap_df$score)
+print("pangenome signal that is multimapped in hg38 and multimapped in pangenome")
+sum(HG00621_A_pan_multimap_multimap_df$score[HG00621_A_pan_multimap_multimap_df$seqnames == "chrM"])/sum(HG00621_A_pan_multimap_multimap_df$score)
+
+print("hg38 signal that is uniquely mapped in hg38 but unmapped in pangenome")
+sum(HG00621_A_hg38_unique_unmapped_df$score[HG00621_A_hg38_unique_unmapped_df$seqnames == "chrM"])/sum(HG00621_A_hg38_unique_unmapped_df$score)
+print("hg38 signal that is uniquely mapped in hg38 and multimapped in pangenome")
+sum(HG00621_A_hg38_unique_multimap_df$score[HG00621_A_hg38_unique_multimap_df$seqnames == "chrM"])/sum(HG00621_A_hg38_unique_multimap_df$score)
+print("hg38 signal that is multimapped in hg38 but unmapped in pangenome")
+sum(HG00621_A_hg38_multimap_unmapped_df$score[HG00621_A_hg38_multimap_unmapped_df$seqnames == "chrM"])/sum(HG00621_A_hg38_multimap_unmapped_df$score)
+print("hg38 signal that is multimapped in hg38 and multimapped in pangenome")
+sum(HG00621_A_hg38_multimap_multimap_df$score[HG00621_A_hg38_multimap_multimap_df$seqnames == "chrM"])/sum(HG00621_A_hg38_multimap_multimap_df$score)
+```
+
+```{r Order by chromosome}
+# Order by chromosome
+HG00621_A_hg38_unique_unmapped_df$seqnames <- factor(HG00621_A_hg38_unique_unmapped_df$seqnames, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+HG00621_A_hg38_unique_multimap_df$seqnames <- factor(HG00621_A_hg38_unique_multimap_df$seqnames, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+HG00621_A_hg38_multimap_unmapped_df$seqnames <- factor(HG00621_A_hg38_multimap_unmapped_df$seqnames, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+HG00621_A_hg38_multimap_multimap_df$seqnames <- factor(HG00621_A_hg38_multimap_multimap_df$seqnames, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+
+HG00621_A_pan_unmapped_unique_df$seqnames <- factor(HG00621_A_pan_unmapped_unique_df$seqnames, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+HG00621_A_pan_unmapped_multimap_df$seqnames <- factor(HG00621_A_pan_unmapped_multimap_df$seqnames, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+HG00621_A_pan_unique_multimap_df$seqnames <- factor(HG00621_A_pan_unique_multimap_df$seqnames, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+HG00621_A_pan_multimap_multimap_df$seqnames <- factor(HG00621_A_pan_multimap_multimap_df$seqnames, levels = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"))
+```
+
+```{r Plotting coverage of hg38 reads uniquely mapped in hg38 and unmapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_hg38_unique_unmapped_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (unmapped) and hg38 (uniquely mapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels = scales::comma, trans = "log2")
+```
+
+```{r Plotting coverage of hg38 reads uniquely mapped in hg38 and multimapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_hg38_unique_multimap_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (multi-mapped) and hg38 (uniquely mapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels = scales::comma, trans = "log2")
+```
+```{r Plotting coverage of hg38 reads multimapped in hg38 and unmapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_hg38_multimap_unmapped_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (unmapped) and hg38 (multi-mapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels = scales::comma, trans = "log2")
+```
+
+```{r Plotting coverage of hg38 reads multimapped in hg38 and multimapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_hg38_multimap_multimap_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (multi-mapped) and hg38 (multi-mapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels = scales::comma, trans = "log2")
+```
+
+```{r Plotting coverage of pangenome reads uniquely mapped in hg38 and unmapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_pan_unmapped_unique_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (uniquely mapped) and hg38 (unmapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels =scales::comma, trans = "log2")
+```
+
+```{r Plotting coverage of pangenome reads uniquely mapped in hg38 and multimapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_pan_unique_multimap_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (uniquely mapped) and hg38 (multi-mapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels =scales::comma, trans = "log2")
+```
+
+```{r Plotting coverage of pangenome reads unmapped in hg38 and multimapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_pan_unmapped_multimap_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (multi-mapped) and hg38 (unmapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels =scales::comma, trans = "log2")
+```
+
+```{r Plotting coverage of pangenome reads uniquely in hg38 and multimapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_pan_multimap_multimap_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (multi-mapped) and hg38 (uniquely mapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels =scales::comma, trans = "log2")
+```
+
+```{r Plotting coverage of pangenome reads multimapped in hg38 and multimapped in pangenome, include=TRUE, fig.width=24, fig.height=16}
+ggplot() +
+  geom_point(data = HG00621_A_pan_multimap_multimap_df, aes(x = start/1000000, y = score), color = "black", alpha=0.75, stroke=0, size=0.75) +
+  facet_wrap(~ seqnames, scales = "free_x") +
+  labs(title = "Reads changing fate between pangenome (multi-mapped) and hg38 (multi-mapped)",
+       x = "hg38 genomic position (Mb)",
+       y = "Coverage")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels =scales::comma, trans = "log2")
+```
+
+```{r define import alignments and cound per chromosome function}
+importAndCalculatePerBamChromCounts<-function(bam_file,Fate=bam_file){
+  # Open the BAM file
+  bam <- BamFile(bam_file)
+  
+  # Read data from the BAM file
+  param <- ScanBamParam(what = c("rname", "flag"))
+  bam_data <- scanBam(bam, param = param)
+  
+  # Extract chromosome names and flags
+  chromosomes <- table(bam_data[[1]][2])
+  chromosomes<-as.data.frame(chromosomes)
+  # filter out any with 0 reads
+  chromosomes <- chromosomes[chromosomes$Freq > 0,]
+  total_reads <- sum(chromosomes$Freq)
+  chromosomes$Fraction <- chromosomes$Freq/total_reads
+  chromosomes$Fate<-Fate
+  return(chromosomes)
+}
+```
+
+```{r import and calculate per chromosome counts for each fate class, include=TRUE}
+
+PerChromCount_Fate_2_Pangenome<-importAndCalculatePerBamChromCounts("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/ExtractedAlignments/sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_2_query.bam", "2")
+PerChromCount_Fate_2_Pangenome$Coordinates<-"Pangenome"
+
+PerChromCount_Fate_3_Pangenome<-importAndCalculatePerBamChromCounts("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/ExtractedAlignments/sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_3_query.bam", "3")
+PerChromCount_Fate_3_Pangenome$Coordinates<-"Pangenome"
+
+PerChromCount_Fate_6_Pangenome<-importAndCalculatePerBamChromCounts("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/ExtractedAlignments/sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_6_query.bam", "6")
+PerChromCount_Fate_6_Pangenome$Coordinates<-"Pangenome"
+
+PerChromCount_Fate_8_Pangenome<-importAndCalculatePerBamChromCounts("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/ExtractedAlignments/sorted_step2.1_trimed_HG00621_A_pangenome.hg38_fate_8_query.bam", "8")
+PerChromCount_Fate_8_Pangenome$Coordinates<-"Pangenome"
+
+
+PerChromCount_Fate_4_Reference<-importAndCalculatePerBamChromCounts("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/ExtractedAlignments/sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_4_reference.bam", "4")
+PerChromCount_Fate_4_Reference$Coordinates<-"Reference"
+
+PerChromCount_Fate_6_Reference<-importAndCalculatePerBamChromCounts("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/ExtractedAlignments/sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_6_reference.bam", "6")
+PerChromCount_Fate_6_Reference$Coordinates<-"Reference"
+
+PerChromCount_Fate_7_Reference<-importAndCalculatePerBamChromCounts("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/ExtractedAlignments/sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_7_reference.bam", "7")
+PerChromCount_Fate_7_Reference$Coordinates<-"Reference"
+
+PerChromCount_Fate_8_Reference<-importAndCalculatePerBamChromCounts("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/Pangenome_ReadTrace_fate_BedGraphs/ExtractedAlignments/sorted_step2.1_trimed_HG00621_A_hg38.LOCAL_fate_8_reference.bam", "8")
+PerChromCount_Fate_8_Reference$Coordinates<-"Reference"
+```
+
+```{r combine per chromosome counts, include=TRUE}
+PerChromCount<-rbind(PerChromCount_Fate_2_Pangenome,
+                     PerChromCount_Fate_3_Pangenome,
+                     PerChromCount_Fate_6_Pangenome,
+                     PerChromCount_Fate_8_Pangenome,
+                     PerChromCount_Fate_4_Reference,
+                     PerChromCount_Fate_6_Reference,
+                     PerChromCount_Fate_7_Reference,
+                     PerChromCount_Fate_8_Reference)
+
+# Change rname by replacing "GRCh38#0#" with ""
+PerChromCount$rname<-gsub("GRCh38#0#", "", PerChromCount$rname)
+
+# Pull non-reduntant fates
+PerChromCount.NR<-subset(PerChromCount, Fate %in% c(2, 3, 4, 7))
+
+# Convert fate values using following key:
+# 2: unmapped in ref and unique in pan
+# 3: unmapped in ref and multimapped in pan
+# 4: unique in ref and unmapped in pan
+# 6: unique in ref and multimapped in pan
+# 7: multimapped in ref and unmapped in pan
+# 8: multimapped in ref and multimapped in pan
+
+PerChromCount$Fate<-factor(PerChromCount$Fate, levels = c("2", "3", "4", "6", "7", "8"), labels = c("unmapped in ref and unique in pan",
+                                                                                             "unmapped in ref and multimapped in pan",
+                                                                                             "unique in ref and unmapped in pan",
+                                                                                             "unique in ref and multimapped in pan",
+                                                                                             "multimapped in ref and unmapped in pan",
+                                                                                             "multimapped in ref and multimapped in pan"))
+
+PerChromCount.NR$Fate<-factor(PerChromCount.NR$Fate, levels = c("2", "3", "4", "7"), labels = c("unmapped in ref and unique in pan",
+                                                                                             "unmapped in ref and multimapped in pan",
+                                                                                             "unique in ref and unmapped in pan",
+                                                                                             "multimapped in ref and unmapped in pan"))
+
+# Re-calculating fraction for non-redundant fates
+PerChromCount.NR$Fraction<-PerChromCount.NR$Freq/sum(PerChromCount.NR$Freq)
+```
+
+```{r Plotting number of reads per chromosome split by fate, include=TRUE, fig.width=16, fig.height=6}
+# Split plot by coordinates
+ggplot() +
+  geom_bar(data = PerChromCount, aes(x = reorder(rname, Freq), y = Freq, fill = Fate), stat = "identity", position = "dodge") +
+  labs(title = "Number of reads per chromosome",
+       x = "Chromosome",
+       y = "Number of reads")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "bottom")+
+  scale_y_continuous(labels = scales::comma)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  facet_grid(~ Coordinates)
+```
+
+```{r Plotting fraction of reads per chromosome split by fate, include=TRUE, fig.width=16, fig.height=6}
+ggplot() +
+  geom_bar(data = PerChromCount, aes(x = reorder(rname, Fraction), y = Fraction, fill = Fate), stat = "identity", position = "dodge") +
+  labs(title = "Fraction of reads per chromosome",
+       x = "Chromosome",
+       y = "Fraction of reads")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "bottom")+
+  scale_y_continuous(labels = scales::percent)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  facet_grid(~ Coordinates)
+```
+```{r Add up counts across fates split by coordinates}
+# For each chromosome, add up counts across fates
+PerChromCount_Sum<-PerChromCount %>% group_by(rname, Coordinates) %>% summarise(Freq = sum(Freq))
+
+# Calculate fraction
+PerChromCount_Sum$Fraction<-PerChromCount_Sum$Freq/sum(PerChromCount_Sum$Freq)
+```
+
+```{r Plotting number of reads per chromosome split by coordinates, include=TRUE, fig.width=16, fig.height=6}
+ggplot() +
+  geom_bar(data = PerChromCount_Sum, aes(x = reorder(rname, Freq), y = Freq, fill = Coordinates), stat = "identity", position = "dodge") +
+  labs(title = "Number of reads per chromosome",
+       x = "Chromosome",
+       y = "Number of reads")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "bottom")+
+  scale_y_continuous(labels = scales::comma)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r Plotting fraction of reads per chromosome split by coordinates, include=TRUE, fig.width=16, fig.height=6}
+ggplot() +
+  geom_bar(data = PerChromCount_Sum, aes(x = reorder(rname, Fraction), y = Fraction, fill = Coordinates), stat = "identity", position = "dodge") +
+  labs(title = "Fraction of reads per chromosome",
+       x = "Chromosome",
+       y = "Fraction of reads")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "bottom")+
+  scale_y_continuous(labels = scales::percent)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r Add up counts across fates}
+# For each chromosome, add up counts across fates
+PerChromCount_Sum<-PerChromCount %>% group_by(rname) %>% summarise(Freq = sum(Freq))
+
+# Calculate fraction
+PerChromCount_Sum$Fraction<-PerChromCount_Sum$Freq/sum(PerChromCount_Sum$Freq)
+```
+
+```{r Plotting number of reads per chromosome, include=TRUE, fig.width=16, fig.height=6}
+ggplot() +
+  geom_bar(data = PerChromCount_Sum, aes(x = reorder(rname, Freq), y = Freq), stat = "identity", position = "dodge") +
+  labs(title = "Number of reads per chromosome",
+       x = "Chromosome",
+       y = "Number of reads")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels = scales::comma)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r Plotting fraction of reads per chromosome, include=TRUE, fig.width=16, fig.height=6}
+ggplot() +
+  geom_bar(data = PerChromCount_Sum, aes(x = reorder(rname, Fraction), y = Fraction), stat = "identity", position = "dodge") +
+  labs(title = "Fraction of reads per chromosome",
+       x = "Chromosome",
+       y = "Fraction of reads")+
+  CS.THEME+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"), legend.position = "none")+
+  scale_y_continuous(labels = scales::percent)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+

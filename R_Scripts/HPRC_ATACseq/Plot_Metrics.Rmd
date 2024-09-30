@@ -1,0 +1,547 @@
+---
+title: "ATAC-seq Read Fate Analysis"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+set.seed(0)
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/")
+
+library(ggplot2)
+library(cowplot)
+library(scales)
+library("dplyr")
+library(factoextra)
+library(tidyr)
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r load data}
+Data.Pan<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/pangenome/Combined_Metrics.txt", header = FALSE)
+#colnames(Data.Pan)<-c("Sample","Replicate","mapped","mapped_ratio","uniq_mapped","non_redundant_uniq_mapped","effect_ratio","nodup_ratio","after_align_dup","rup_ratio","sub10M_enrichment","coding_enrichment","bg_gt37_percentage")
+colnames(Data.Pan)<-c("file","total","written_reads","mapped","mapped_ratio","uniq_mapped","non_redundant_uniq_mapped","effect_ratio","single_end","fastqc_dup","after_align_dup","number_of_reads_under_peak","rup_ratio","sub10M_enrichment","coding_enrichment","bg_gt37_percentage")
+
+#Data.Pan<-Data.Pan[,colnames(Data.Pan)!="nodup_ratio"]
+Data<-read.delim("Combined_QC_Metrics_Table.txt",sep = "\t", header=FALSE)
+colnames(Data)<-c("file","total","written_reads","mapped","mapped_ratio","uniq_mapped","non_redundant_uniq_mapped","effect_ratio","single_end","fastqc_dup","after_align_dup","number_of_reads_under_peak","rup_ratio","sub10M_enrichment","coding_enrichment","bg_gt37_percentage")
+
+Data.Mito.Pan<-read.delim("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/pangenome/Combined_chrM_Metrics.txt", header = FALSE)
+colnames(Data.Mito.Pan)<-c("File","map_uniq","unique_chrM","Percent.ChrM")
+
+Data.Mito<-read.delim("Combined_step2.2_Mitochondria_Ratio.txt",sep = "\t", header=FALSE)
+colnames(Data.Mito)<-c("Run","Percent.ChrM")
+```
+
+```{r data wrangling}
+Data$Percent.ChrM<-Data.Mito$Percent.ChrM[match(Data$file,Data.Mito$Run)]
+
+Data$Sample<-unlist(lapply(Data$file, function(FILE) strsplit(FILE,split = "_")[[1]][1]))
+Data$Replicate<-unlist(lapply(Data$file, function(FILE) strsplit(FILE,split = "_")[[1]][2]))
+Data$Genome<-unlist(lapply(Data$file, function(FILE) strsplit(FILE,split = "_")[[1]][3]))
+
+Data$Parent<-NA
+
+unique(Data$Genome)
+
+Data$Parent[Data$Genome %in% c("HG03516.paternal.wMito","HG00621.paternal.wMito","HG01952.paternal.wMito","HG01978.paternal.wMito","HG00741.paternal.wMito")]<-"paternal"
+Data$Parent[Data$Genome %in% c("HG03516.maternal","HG00621.maternal","HG01952.maternal","HG01978.maternal","HG00741.maternal")]<-"maternal"
+
+Data$Genome[Data$Genome=="hg38.LOCAL"]<-"hg38"
+
+MITO.DF<-Data
+MITO.DF$Parent<-as.character(MITO.DF$Parent)
+MITO.DF$Parent[MITO.DF$Genome %in% c("CHM13","hg38","hg38.NoBlackList")]<-as.character(MITO.DF$Genome[MITO.DF$Genome %in% c("CHM13","hg38","hg38.NoBlackList")])
+
+subset(MITO.DF, !(Genome %in% c("HG03516.paternal","HG01978.paternal","HG01952.paternal","HG00741.paternal","HG00621.paternal") ))
+MITO.DF<-MITO.DF[,c(21,17,18,19)]
+
+Data.Mito.Pan$Replicate<-unlist(lapply(Data.Mito.Pan$File, function(FILE) strsplit(FILE,split = "_")[[1]][6]))
+Data.Mito.Pan$Sample<-unlist(lapply(Data.Mito.Pan$File, function(FILE) strsplit(FILE,split = "_")[[1]][5]))
+Data.Mito.Pan$Parent<-"pangenome"
+
+MITO.DF<-rbind(MITO.DF,Data.Mito.Pan[,c(7,4,6,5)])
+
+mean(subset(MITO.DF, Sample=="HG00621" & Parent!="maternal")$Percent.ChrM)
+
+mean(subset(MITO.DF, Sample=="HG00621" & Parent=="maternal")$Percent.ChrM)
+
+```
+
+```{r plot mitochondrial, include=TRUE, fig.width=12, fig.height=4}
+Plot.Mitochondrial<-ggplot(subset(MITO.DF,Parent!="hg38.NoBlackList"),aes(x=Parent,y=Percent.ChrM,fill=Replicate))+
+  CS.THEME+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  ylab("%Mitochondrial")+
+  xlab("Genome")+
+  scale_y_continuous(expand = c(0,0),limits = c(0,0.6))+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+ggsave2(filename = "HPRC.Plot.Mitochondrial.png",plot = Plot.Mitochondrial,width = 12, height = 6, units = "in")
+
+Plot.Mitochondrial
+```
+
+```{r define TARGET-II QC standards and colors}
+QC.Colors<-viridis(2,option = "viridis", begin=0.55,end=0.9)
+
+CalculateTargetIIScore<-function(DATA.FRAME,SAMPLE.NAME,GENOME.NAME,TAG=NA){
+  METRICS<-subset(DATA.FRAME,Sample==SAMPLE.NAME & Genome==GENOME.NAME & Replicate==TAG)
+  
+  single_end<-METRICS$single_end
+  if(single_end>=40000000){
+    Score.single_end<-2
+  } else if(single_end<40000000 & single_end>=25000000){
+    Score.single_end<-1
+  } else if(single_end<25000000){
+    Score.single_end<- -1
+  } else {
+    print("Unrecognized value: single_end")
+    Score.single_end<-NA
+  }
+  
+  rup_ratio<-METRICS$rup_ratio
+  if(rup_ratio>=20){
+    Score.rup_ratio<-2
+  } else if(rup_ratio<20 & rup_ratio>=12){
+    Score.rup_ratio<-1
+  } else if(rup_ratio<12){
+    Score.rup_ratio<- -1
+  } else {
+    print("Unrecognized value: rup_ratio")
+    Score.rup_ratio<-NA
+  }
+  
+  sub10M_enrichment<-METRICS$sub10M_enrichment
+  if(sub10M_enrichment>=18){
+    Score.sub10M_enrichment<-2
+  } else if(sub10M_enrichment<18 & sub10M_enrichment>=15){
+    Score.sub10M_enrichment<-1
+  } else if(sub10M_enrichment<15){
+    Score.sub10M_enrichment<- -1
+  } else {
+    print("Unrecognized value: rup_ratio")
+    Score.sub10M_enrichment<-NA
+  } 
+  
+  coding_enrichment<-METRICS$coding_enrichment
+  if(coding_enrichment>=11){
+    Score.coding_enrichment<-2
+  } else if(coding_enrichment<11 & coding_enrichment>=7){
+    Score.coding_enrichment<-1
+  } else if(coding_enrichment<7){
+    Score.coding_enrichment<- -1
+  } else {
+    print("Unrecognized value: rup_ratio")
+    Score.coding_enrichment<-NA
+  }
+  
+  bg_gt37_percentage<-METRICS$bg_gt37_percentage
+  if(bg_gt37_percentage<=10){
+    Score.bg_gt37_percentage<-2
+  } else if(bg_gt37_percentage>10 & bg_gt37_percentage<=20){
+    Score.bg_gt37_percentage<-1
+  } else if(bg_gt37_percentage>20){
+    Score.bg_gt37_percentage<- -1
+  } else {
+    print("Unrecognized value: rup_ratio")
+    Score.bg_gt37_percentage<-NA
+  }
+  
+  Scores<-data.frame(
+    Score.single_end,
+    Score.rup_ratio,
+    Score.sub10M_enrichment,
+    Score.coding_enrichment,
+    Score.bg_gt37_percentage
+  )
+  
+  Scores$Sum.of.QC.Scores<-sum(Scores)
+  
+  return(Scores)
+  
+}
+```
+
+
+```{r apply TARGET-II to linear runs}
+Data$Sum.of.QC.Scores<-NA
+
+Data[Data$Sample=="HG00621" & Data$Genome=="hg38" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","hg38","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="hg38" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","hg38","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="hg38" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","hg38","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="hg38" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","hg38","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="hg38" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","hg38","A")$Sum.of.QC.Scores
+
+Data[Data$Sample=="HG00621" & Data$Genome=="hg38" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","hg38","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="hg38" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","hg38","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="hg38" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","hg38","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="hg38" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","hg38","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="hg38" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","hg38","B")$Sum.of.QC.Scores
+
+
+Data[Data$Sample=="HG00621" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","hg38.NoBlackList","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","hg38.NoBlackList","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","hg38.NoBlackList","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","hg38.NoBlackList","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","hg38.NoBlackList","A")$Sum.of.QC.Scores
+
+Data[Data$Sample=="HG00621" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","hg38.NoBlackList","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","hg38.NoBlackList","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","hg38.NoBlackList","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","hg38.NoBlackList","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="hg38.NoBlackList" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","hg38.NoBlackList","B")$Sum.of.QC.Scores
+
+
+Data[Data$Sample=="HG00621" & Data$Genome=="CHM13" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","CHM13","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="CHM13" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","CHM13","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="CHM13" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","CHM13","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="CHM13" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","CHM13","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="CHM13" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","CHM13","A")$Sum.of.QC.Scores
+
+Data[Data$Sample=="HG00621" & Data$Genome=="CHM13" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","CHM13","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="CHM13" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","CHM13","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="CHM13" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","CHM13","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="CHM13" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","CHM13","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="CHM13" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","CHM13","B")$Sum.of.QC.Scores
+
+
+
+Data[Data$Sample=="HG00621" & Data$Genome=="HG00621.maternal" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","HG00621.maternal","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="HG00741.maternal" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","HG00741.maternal","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="HG01952.maternal" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","HG01952.maternal","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="HG01978.maternal" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","HG01978.maternal","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="HG03516.maternal" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","HG03516.maternal","A")$Sum.of.QC.Scores
+
+Data[Data$Sample=="HG00621" & Data$Genome=="HG00621.maternal" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","HG00621.maternal","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="HG00741.maternal" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","HG00741.maternal","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="HG01952.maternal" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","HG01952.maternal","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="HG01978.maternal" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","HG01978.maternal","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="HG03516.maternal" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","HG03516.maternal","B")$Sum.of.QC.Scores
+
+
+
+Data[Data$Sample=="HG00621" & Data$Genome=="HG00621.paternal.wMito" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","HG00621.paternal.wMito","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="HG00741.paternal.wMito" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","HG00741.paternal.wMito","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="HG01952.paternal.wMito" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","HG01952.paternal.wMito","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="HG01978.paternal.wMito" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","HG01978.paternal.wMito","A")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="HG03516.paternal.wMito" & Data$Replicate=="A",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","HG03516.paternal.wMito","A")$Sum.of.QC.Scores
+
+Data[Data$Sample=="HG00621" & Data$Genome=="HG00621.paternal.wMito" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00621","HG00621.paternal.wMito","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG00741" & Data$Genome=="HG00741.paternal.wMito" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG00741","HG00741.paternal.wMito","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01952" & Data$Genome=="HG01952.paternal.wMito" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01952","HG01952.paternal.wMito","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG01978" & Data$Genome=="HG01978.paternal.wMito" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG01978","HG01978.paternal.wMito","B")$Sum.of.QC.Scores
+Data[Data$Sample=="HG03516" & Data$Genome=="HG03516.paternal.wMito" & Data$Replicate=="B",]$Sum.of.QC.Scores<-CalculateTargetIIScore(Data,"HG03516","HG03516.paternal.wMito","B")$Sum.of.QC.Scores
+```
+
+```{r merge linear and pan-genome data}
+# Order Dfs
+Data<-Data[
+  with(Data, order(Data$Sample, Data$Replicate)),
+]
+
+Data.Pan$Sample<-unlist(lapply(Data.Pan$file, function(FILE) strsplit(FILE,split = "_")[[1]][1]))
+Data.Pan$Replicate<-unlist(lapply(Data.Pan$file, function(FILE) strsplit(FILE,split = "_")[[1]][2]))
+Data.Pan$Genome<-"Pangenome"
+
+Data.Pan<-Data.Pan[
+  with(Data.Pan, order(Data.Pan$Sample, Data.Pan$Replicate)),
+]
+
+Data.Mito.Pan<-Data.Mito.Pan[
+  with(Data.Mito.Pan, order(Data.Mito.Pan$Sample, Data.Mito.Pan$Replicate)),
+]
+
+# Should equal 1 if everything is ok
+sum(Data.Pan$Sample==Data.Mito.Pan$Sample & Data.Pan$Replicate==Data.Mito.Pan$Replicate)/nrow(Data.Pan)
+Data.Pan$Genome<-"pangenome"
+Data.Pan$Parent<-NA
+
+# Should equal 0 if everything is ok
+sum(!(Data.Pan$Sample==Data.Mito.Pan$Sample & Data.Pan$Replicate==Data.Mito.Pan$Replicate))
+
+Data.Pan$Percent.ChrM<-Data.Mito.Pan$Percent.ChrM
+
+sharedColumns<-intersect(colnames(Data.Pan),colnames(Data))
+
+colnames(Data)[!(colnames(Data) %in% colnames(Data.Pan))]
+
+
+TARGET.2.DATA<-bind_rows(Data[,colnames(Data) %in% sharedColumns],Data.Pan[,colnames(Data.Pan) %in% sharedColumns])
+
+TARGET.2.DATA$Genome<-as.character(TARGET.2.DATA$Genome)
+
+
+TARGET.2.DATA$Genome[!(TARGET.2.DATA$Genome %in% c("pangenome","hg38","CHM13","hg38.NoBlackList","HG03516.paternal.wMito","HG01978.paternal.wMito","HG01952.paternal.wMito","HG00741.paternal.wMito","HG00621.paternal.wMito"))]<-as.character(TARGET.2.DATA$Parent[!(TARGET.2.DATA$Genome %in% c("pangenome","hg38","CHM13","hg38.NoBlackList","HG03516.paternal.wMito","HG01978.paternal.wMito","HG01952.paternal.wMito","HG00741.paternal.wMito","HG00621.paternal.wMito"))])
+
+
+TARGET.2.DATA$Genome[(TARGET.2.DATA$Genome %in% c("HG03516.paternal.wMito","HG01978.paternal.wMito","HG01952.paternal.wMito","HG00741.paternal.wMito","HG00621.paternal.wMito"))]<-rep("paternal w/chrM",sum((TARGET.2.DATA$Genome %in% c("HG03516.paternal.wMito","HG01978.paternal.wMito","HG01952.paternal.wMito","HG00741.paternal.wMito","HG00621.paternal.wMito"))))
+
+
+write.table(TARGET.2.DATA, "All_Combined_TARGET_II_QC_Metrics_Table.txt", sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+```
+
+```{r plot TARGET-II, include=TRUE, fig.width=20, fig.height=12}
+TARGET2.A<-ggplot(TARGET.2.DATA,aes(x=Genome,y=single_end/1000000,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  ylab("Useful single ends (M)")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,70))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 25,color=QC.Colors[2],size=1.75,linetype=2)+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+
+TARGET2.B<-ggplot(TARGET.2.DATA,aes(x=Genome,y=rup_ratio,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  ylab("%Useful reads under peaks")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,70))+
+  geom_hline(yintercept = 20,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 12,color=QC.Colors[2],size=1.75,linetype=2)+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+TARGET2.C<-ggplot(TARGET.2.DATA,aes(x=Genome,y=sub10M_enrichment,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  ylab("sub10M_enrichment")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,35))+
+  geom_hline(yintercept = 18,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 15,color=QC.Colors[2],size=1.75,linetype=2)+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+TARGET2.D<-ggplot(TARGET.2.DATA,aes(x=Genome,y=coding_enrichment,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  ylab("coding_enrichment")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,35))+
+  geom_hline(yintercept = 11,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 7,color=QC.Colors[2],size=1.75,linetype=2)+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+TARGET2.E<-ggplot(TARGET.2.DATA,aes(x=Genome,y=bg_gt37_percentage,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  ylab("bg_gt37_percentage")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,21))+
+  geom_hline(yintercept = 10,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 20,color=QC.Colors[2],size=1.75,linetype=2)+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+
+TARGET2.F<-ggplot(TARGET.2.DATA,aes(x=Genome,y=Sum.of.QC.Scores,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  ylab("Sum.of.QC.Scores")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,11))+
+  geom_hline(yintercept = 5,color=QC.Colors[1],size=1.75)+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+
+TARGET2.QC.PANEL<-plot_grid(TARGET2.A,TARGET2.B,TARGET2.C,TARGET2.D,TARGET2.E,Plot.Mitochondrial,ncol=2,labels = "AUTO")
+
+ggsave2(filename = "HPRC.TARGET2.QC.PANEL.png",plot = TARGET2.QC.PANEL,units = "in",height = 1.7*7,width = 2.5*9)
+
+TARGET2.QC.PANEL
+```
+
+```{r plot all metrics panel, include=TRUE, fig.width=20, fig.height=7}
+All.Metric.A<-ggplot(TARGET.2.DATA,aes(y=written_reads/1000000,x=Genome,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,45))+
+  ylab("Total reads (M)")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+
+All.Metric.B<-ggplot(TARGET.2.DATA,aes(y=mapped_ratio,x=Genome,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,1))+
+  ylab("% Mapped")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+All.Metric.C<-ggplot(TARGET.2.DATA,aes(y=effect_ratio,x=Genome,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,1))+
+  ylab("% Non-redundant")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+All.Metric.D<-ggplot(TARGET.2.DATA,aes(y=sub10M_enrichment,x=Genome,fill=Replicate))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,50))+
+  ylab("sub10M enrichment")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))
+
+All.Metric.Panel<-plot_grid(All.Metric.A,All.Metric.B,All.Metric.C,All.Metric.D,ncol=2,labels = "AUTO")
+
+ggsave2(filename = "All.Metric.Panel.png",plot = All.Metric.Panel,width = 2.5*9,height = 2*3.3333,units = "in")
+
+All.Metric.Panel
+```
+
+```{r plot mapped ratio, include=TRUE, fig.width=8, fig.height=4}
+Plot.mapped_ratio<-ggplot(TARGET.2.DATA,aes(y=mapped_ratio,x=Genome,fill=Replicate ))+
+  geom_bar(stat="identity", width=.75, position = "dodge")+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,1))+
+  ylab("% Mapped")+
+  scale_fill_manual(values = c(CS.ColorPalette[11,1],CS.ColorPalette[12,1]))+
+  facet_wrap(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))
+
+ggsave2(filename = "HPRC.Plot.mapped_ratio.png",plot = Plot.mapped_ratio,width = 6, height = 4, units = "in")
+
+Plot.mapped_ratio
+```
+
+```{r feature selection correlation heatmap, include=TRUE, fig.width=8, fig.height=6}
+heatmap(cor(as.matrix(TARGET.2.DATA[,-c(1,18:21)])))
+```
+```{r make PCA data subset}
+colnames(TARGET.2.DATA)
+
+PCA.Subset<-TARGET.2.DATA[,c(18:21,5,8,11,13,14,15,16,17)]
+
+head(PCA.Subset)
+
+PCA.Subset<-subset(PCA.Subset,Genome != "hg38" )
+
+PCA.Subset$Genome[PCA.Subset$Genome=="paternal w/chrM"]<-"Paternal"
+PCA.Subset$Genome[PCA.Subset$Genome=="maternal"]<-"Maternal"
+PCA.Subset$Genome[PCA.Subset$Genome=="hg38.NoBlackList"]<-"hg38"
+
+table(PCA.Subset[,1:3])
+```
+
+```{r perform PCA and calculate partial eta squareds}
+# Perform PCA
+res.pca<-prcomp(PCA.Subset[,5:11], scale=TRUE)
+#Plot.PCs<-fviz_eig(res.pca)
+#Plot.PCs
+#ggsave2(filename = "QC_PCs.png",plot = Plot.PCs,units = "in",width = 6/2, height = 6/2)
+
+# Get the partial eta squared values
+PCA.VarObject<-cbind(res.pca$x,PCA.Subset[,1:3])
+
+manova_model<-manova(cbind(PC1,PC2,PC3,PC4,PC5,PC6,PC7)~Sample*Genome+Replicate,PCA.VarObject)
+manova_model.Summary<-summary(manova_model)
+aov_results <- summary.aov(manova_model)
+
+NUM.PCs<-7
+PC.PartialEtaSquareds<-lapply(1:NUM.PCs,
+       function(PC){aov_results[[PC]][[2]][1:5]/sum(aov_results[[PC]][[2]])}
+       ) %>% do.call(rbind,.) %>% as.data.frame 
+
+colnames(PC.PartialEtaSquareds)<-c("Sample","Genome","Sample:Genome","Replicate","Residual")
+
+PC.Statistics<-cbind(as.factor(1:NUM.PCs),get_eig(res.pca),PC.PartialEtaSquareds)
+colnames(PC.Statistics)<-c("PC","Eigenvalue","VariancePercent","CumulativeVariancePercent","PartialEtaSquared.Sample","PartialEtaSquared.Genome","PartialEtaSquared.Sample:Genome","PartialEtaSquared.Replicate","PartialEtaSquared.Residual")
+rownames(PC.Statistics)<-NULL
+
+PC.Statistics$VariancePercent.Sample<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Sample
+PC.Statistics$VariancePercent.Genome<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Genome
+PC.Statistics$VariancePercent.Sample.Genome<-PC.Statistics$VariancePercent*PC.Statistics$`PartialEtaSquared.Sample:Genome`
+PC.Statistics$VariancePercent.Replicate<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Replicate
+PC.Statistics$VariancePercent.Residual<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Residual
+```
+
+```{r plot PCs and save data}
+# Save the PC statistics
+write.table(PC.Statistics, file = "PC.Statistics.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Make long df to plot variance percents
+PC.Statistics.VariancePercent.Long<-gather(PC.Statistics[,c(1,10:14)],key="VarianceType",value="VariancePercent",VariancePercent.Sample:VariancePercent.Residual)
+# clean up names
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("VariancePercent.","",PC.Statistics.VariancePercent.Long$VarianceType)
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("Sample.Genome","Sample:Genome",PC.Statistics.VariancePercent.Long$VarianceType)
+
+PC.Statistics.VariancePercent.Long$VarianceType<-factor(PC.Statistics.VariancePercent.Long$VarianceType, levels = c("Sample","Genome","Sample:Genome","Replicate","Residual"), ordered = TRUE)
+
+Plot.PCs<-ggplot(PC.Statistics.VariancePercent.Long, aes(fill=VarianceType, y=VariancePercent, x=PC)) + 
+  geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#ff7f5d","#2d5879","#b2823f","#aaaaaa","#333434"))+
+  #scale_fill_manual(values = c("#2d5879","#aaaaaa","#333434","#ff7f5d","#b2823f"))+
+  ylab("Percent of variance")+
+  xlab("Principal component")+
+  ggtitle("ATAC-seq - QC metrics\n%Variance captured by PCs partitioned by factor")+
+  CS.THEME+
+  theme(legend.position="bottom")+
+  scale_y_continuous(limits = c(0,round(max(PC.Statistics$VariancePercent)*1.05)), expand = c(0,0))+
+  theme(legend.key.size = unit(0.2, "cm"))
+
+ggsave2(filename = "QC_PCs.png",plot = Plot.PCs,units = "in",width = 7, height = 6)
+
+Plot.PCs
+```
+
+```{r plot PCA, include=TRUE, fig.width=12.75, fig.height=4.5}
+# Plot PCAs
+groups.Sample <- as.factor(PCA.Subset$Sample)
+PCA.Plot.Sample<-fviz_pca_ind(res.pca,
+             col.ind = groups.Sample,
+             palette = viridis(5, end=0.9),
+             repel = TRUE,
+             addEllipses = TRUE,
+             ellipse.type = "convex",
+             title="ATAC-seq - Samples"
+)+
+CS.THEME+
+theme(legend.position="bottom",legend.text = element_text(size=8,hjust = 0.7), legend.title = element_text(size=12),legend.key.size = unit(0.25, "cm"))
+
+
+groups <- as.factor(PCA.Subset$Genome)
+PCA.Plot.Genome<-fviz_pca_ind(res.pca,
+             col.ind = groups,
+             palette = viridis(5,option = "magma", end = 0.8),
+             repel = TRUE,
+             title="ATAC-seq - Genome"
+)+
+CS.THEME+
+theme(legend.position="bottom",legend.text = element_text(size=8,hjust = 0.7), legend.title = element_text(size=12),legend.key.size = unit(0.25, "cm"))
+
+
+groups <- as.factor(PCA.Subset$Replicate)
+PCA.Plot.Replicate<-fviz_pca_ind(res.pca,
+             col.ind = groups,
+             palette = viridis(2,option = "cividis", end = 0.8),
+             repel = TRUE,
+             title="ATAC-seq - Replicate"
+)+
+CS.THEME+
+theme(legend.position="bottom",legend.text = element_text(size=8,hjust = 0.7), legend.title = element_text(size=12),legend.key.size = unit(0.25, "cm"))
+
+PCA.Panel<-plot_grid(PCA.Plot.Sample,PCA.Plot.Genome,PCA.Plot.Replicate,labels = "AUTO",ncol=3)
+
+ggsave2(filename = "QC.PCA.Panel.png",plot = PCA.Panel, units = "in", width = 17*0.75, height = 6*0.75)
+
+PCA.Panel
+```

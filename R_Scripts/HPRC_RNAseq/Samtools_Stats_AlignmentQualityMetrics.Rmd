@@ -1,0 +1,424 @@
+---
+title: "RNA-seq Samtools stats alignment quality analysis"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Set seed
+set.seed(0)
+rm(list=ls())
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/AlignmentQuality_Analysis/")
+
+
+# Load packages
+library(ggplot2)
+require(cowplot)
+library(viridis)
+library(tidyr)
+library(dplyr)
+library(ggpubr)
+library(pillar)
+
+options(pillar.sigfig = 6)
+theme_set(theme_cowplot())
+
+# Set theme object
+CS.THEME<-theme(
+  panel.background = element_rect(fill="white"),
+  panel.grid.major=element_line(color="gray90", linetype="solid"), #adds major grid lines
+  panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65), #adds minor grid lines
+  panel.border=element_rect(fill=NA, color="black", size=1.5, linetype="solid"), #draws a black border around plot
+  axis.line=element_blank(),
+  text=element_text(colour = "black", family= "Arial")
+)
+```
+
+```{r define input function, include=FALSE}
+read_stats <- function(file_path, sample=NA, replicate=NA, assembly=NA, annotations=NA) {
+  # Read the file
+  lines <- readLines(file_path)
+  
+  # Remove comments from each line
+  lines <- sapply(lines, function(line) {
+    # Remove everything after and including the '#'
+    line <- strsplit(line, "#")[[1]][1]
+    # Trim any extra whitespace
+    trimws(line)
+  })
+  
+  # Filter out any empty lines
+  lines <- lines[lines != ""]
+  
+  # Split the lines into key-value pairs
+  stats <- sapply(lines, function(line) {
+    parts <- strsplit(line, ":")[[1]]
+    key <- trimws(parts[1])
+    value <- trimws(parts[2])
+    return(c(key, value))
+  })
+  
+  # Convert to a data frame
+  stats_df <- as.data.frame(t(stats), stringsAsFactors = FALSE)
+  colnames(stats_df) <- c("Metric", "Value")
+  
+  # Convert numeric values to numeric type
+  stats_df$Value <- as.numeric(stats_df$Value)
+  rownames(stats_df)<-NULL
+  
+  # Add sample, replicate, assembly, and annotations columns if provided
+  if (!is.na(sample)) {
+    stats_df$Sample <- sample
+  }
+  if (!is.na(replicate)) {
+    stats_df$Replicate <- replicate
+  }
+  if (!is.na(assembly)) {
+    stats_df$Assembly <- assembly
+  }
+  if (!is.na(annotations)) {
+    stats_df$Annotations <- annotations
+  }
+  
+  return(stats_df)
+}
+```
+
+```{r read in linear genome runs and format, include=TRUE}
+# Read in list of all files in the directory with full path
+LinearGenome_file_list <- dir("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/AlignmentQuality_Analysis/LinearAlignment_SamtoolsStats/AlignmentQualityMetrics", full.names = TRUE)
+
+# start to extract run information from file name
+LinearGenome_Sample_Information<-unlist(lapply(LinearGenome_file_list, function(X) strsplit(X,"/")[[1]][15]))
+
+# remove ".alignmentQualityMetrics" from LinearGenome_Sample_Information
+LinearGenome_Sample_Information <- gsub(".alignmentQualityMetrics", "", LinearGenome_Sample_Information)
+# remove "_v29" from LinearGenome_Sample_Information
+LinearGenome_Sample_Information <- gsub("gencode_v29", "gencode", LinearGenome_Sample_Information)
+# correct replicate delimiting 
+LinearGenome_Sample_Information <- gsub("_1.", ".A.", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("_2.", ".B.", LinearGenome_Sample_Information)
+# rename CHM13v2.0 to CHM13
+LinearGenome_Sample_Information <- gsub("CHM13v2.0", "CHM13", LinearGenome_Sample_Information)
+# rename NA annotations as none
+LinearGenome_Sample_Information <- gsub("NA", "none", LinearGenome_Sample_Information)
+
+# replaced any Assembly values containing .maternal with the name Maternal.
+LinearGenome_Sample_Information <- gsub("HG00621_mat", "Maternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG00741_mat", "Maternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG01952_mat", "Maternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG01978_mat", "Maternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG03516_mat", "Maternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG00621_pat", "Paternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG00741_pat", "Paternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG01952_pat", "Paternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG01978_pat", "Paternal", LinearGenome_Sample_Information)
+LinearGenome_Sample_Information <- gsub("HG03516_pat", "Paternal", LinearGenome_Sample_Information)
+
+# replace . with _ for delimiting
+LinearGenome_Sample_Information <- gsub("\\.", "_", LinearGenome_Sample_Information)
+
+# split the string by "_" to make columns: Sample, Replicate, Assembly, Annotations and turn into a data frame
+LinearGenome_Sample_Information <- as.data.frame(do.call(rbind, strsplit(LinearGenome_Sample_Information, "_")))
+colnames(LinearGenome_Sample_Information) <- c("Sample", "Replicate", "Assembly", "Annotations")
+
+# Check to name sure number of rows in LinearGenome_Sample_Information is the same as the number of files in LinearGenome_file_list
+if (nrow(LinearGenome_Sample_Information) != length(LinearGenome_file_list)) {
+  stop("Number of files does not match number of rows in LinearGenome_Sample_Information")
+} else {
+  print("Number of files matches number of rows in LinearGenome_Sample_Information")
+}
+
+# Import data and build data frame
+lapply(
+  1:length(LinearGenome_file_list),
+  function(X) read_stats(LinearGenome_file_list[X], sample=LinearGenome_Sample_Information[X,]$Sample, replicate=LinearGenome_Sample_Information[X,]$Replicate, assembly=LinearGenome_Sample_Information[X,]$Assembly, annotations=LinearGenome_Sample_Information[X,]$Annotations)
+  ) %>% bind_rows() -> LinearGenome_Stats
+
+# Replace " " with "_" in the Metric column
+LinearGenome_Stats$Metric <- gsub(" ", "_", LinearGenome_Stats$Metric)
+
+# Spread the data frame to make it wide Metrics as columns Values as fill
+spread(LinearGenome_Stats, key=Metric, value=Value) -> LinearGenome_Stats_wide
+```
+
+```{r read in pangenome runs and format, include=TRUE}
+# Read in list of all files in the directory with full path
+Pangenome_file_list <- dir("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/RNAseq/AlignmentQuality_Analysis/PangenomeAlignment_SamtoolsStats/AlignmentQualityMetrics", full.names = TRUE)
+
+# start to extract run information from file name
+Pangenome_Sample_Information<-unlist(lapply(Pangenome_file_list, function(X) strsplit(X,"/")[[1]][15]))
+
+# remove "_NMadded.alignmentQualityMetrics" from Pangenome_Sample_Information
+Pangenome_Sample_Information <- gsub("_NMadded.alignmentQualityMetrics", "", Pangenome_Sample_Information)
+
+# replace _1_ with _A_ and _2_ with _B_
+Pangenome_Sample_Information <- gsub("_1_", "_A_", Pangenome_Sample_Information)
+Pangenome_Sample_Information <- gsub("_2_", "_B_", Pangenome_Sample_Information)
+
+# replace .gencode with _gencode
+Pangenome_Sample_Information <- gsub(".gencode", "_gencode", Pangenome_Sample_Information)
+
+# split the string by "_" to make columns: Sample, Replicate, Assembly, Annotations and turn into a data frame
+Pangenome_Sample_Information <- as.data.frame(do.call(rbind, strsplit(Pangenome_Sample_Information, "_")))
+colnames(Pangenome_Sample_Information) <- c("Sample", "Replicate", "Assembly", "Annotations")
+
+# Check to name sure number of rows in Pangenome_Sample_Information is the same as the number of files in Pangenome_file_list
+if (nrow(Pangenome_Sample_Information) != length(Pangenome_file_list)) {
+  stop("Number of files does not match number of rows in Pangenome_Sample_Information")
+} else {
+  print("Number of files matches number of rows in Pangenome_Sample_Information")
+}
+
+# Import data and build data frame
+lapply(
+  1:length(Pangenome_file_list),
+  function(X) read_stats(Pangenome_file_list[X], sample=Pangenome_Sample_Information[X,]$Sample, replicate=Pangenome_Sample_Information[X,]$Replicate, assembly=Pangenome_Sample_Information[X,]$Assembly, annotations=Pangenome_Sample_Information[X,]$Annotations)
+  ) %>% bind_rows() -> Pangenome_Stats
+
+# Replace " " with "_" in the Metric column
+Pangenome_Stats$Metric <- gsub(" ", "_", Pangenome_Stats$Metric)
+
+# Spread the data frame to make it wide Metrics as columns Values as fill
+spread(Pangenome_Stats, key=Metric, value=Value) -> Pangenome_Stats_wide
+
+```
+
+```{r combine all data, include=FALSE}
+# Combine all data
+all_data.long <- rbind(LinearGenome_Stats, Pangenome_Stats)
+all_data.wide <- rbind(LinearGenome_Stats_wide, Pangenome_Stats_wide)
+```
+
+```{r perform ANOVA for each metric, include=TRUE}
+for (METRIC in unique(all_data.long$Metric)){
+  print(METRIC)
+  # add empty line
+  print("")
+  TEST<-subset(all_data.long, Metric==METRIC)
+  try(
+    print(summary(aov(Value~Assembly*Sample*Annotations, TEST)))
+  )
+}
+```
+
+```{r plot Metrics gencode, include=FALSE}
+# Metrics to plot:
+# mismatches
+# error_rate
+# outward_oriented_pairs
+# pairs_with_other_orientation
+# pairs_on_different_chromosomes
+# percentage_of_properly_paired_reads_(%)
+# insert_size_average
+# insert_size_standard_deviation
+
+#all_data.wide.gencode<-subset(all_data.wide, Annotations=="gencode")
+#all_data.wide.gencode<-all_data.wide
+
+# Plot the data - mismatches
+Plot_mismatches<-ggplot(all_data.wide, aes(x=Assembly, y=mismatches/1000000))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Mismatches", x="Sample", y="mismatches (M)\n")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "bottom")+
+  facet_grid(Annotations~.)
+
+# Extract legend
+legendplot<-as_ggplot(get_legend(Plot_mismatches))
+
+# Remove legend from plot
+Plot_mismatches<-Plot_mismatches+theme(legend.position="none")
+
+# Plot the data - error_rate
+Plot_error_rate<-ggplot(all_data.wide, aes(x=Assembly, y=reads_mapped))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Error rate", x="Sample", y="% error rate\n")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "none")+
+  facet_grid(Annotations~.)
+
+# Plot the data - error_rate
+Plot_error_rate<-ggplot(all_data.wide, aes(x=Assembly, y=100*error_rate))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Error rate", x="Sample", y="% error rate\n")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "none")+
+  facet_grid(Annotations~.)
+
+# Plot the data - outward_oriented_pairs
+Plot_outward_oriented_pairs<-ggplot(all_data.wide, aes(x=Assembly, y=outward_oriented_pairs/1000000))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Outward oriented pairs", x="Sample", y="outward oriented\npairs (M)")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "none")+
+  facet_grid(Annotations~.)
+
+# Plot the data - pairs_with_other_orientation
+Plot_pairs_with_other_orientation<-ggplot(all_data.wide, aes(x=Assembly, y=pairs_with_other_orientation/1000))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Pairs with other orientation", x="Sample", y="pairs with\nother orientation (K)")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "none")+
+  facet_grid(Annotations~.)
+
+# Plot the data - pairs_on_different_chromosomes
+Plot_pairs_on_different_chromosomes<-ggplot(all_data.wide, aes(x=Assembly, y=pairs_on_different_chromosomes/1000))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Pairs on different chromosomes", x="Sample", y="pairs on\ndifferent chromosomes (K)")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "none")+
+  facet_grid(Annotations~.)
+
+# Plot the data - percentage_of_properly_paired_reads_(%)
+Plot_percentage_of_properly_paired_reads<-ggplot(all_data.wide, aes(x=Assembly, y=`percentage_of_properly_paired_reads_(%)`))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Percentage of properly paired reads (%)", x="Sample", y="%properly paired\nreads")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "none")+
+  facet_grid(Annotations~.)
+
+# Plot the data - insert_size_average
+Plot_insert_size_average<-ggplot(all_data.wide, aes(x=Assembly, y=insert_size_average))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Insert size average", x="Sample", y="insert size\naverage")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "none")+
+  facet_grid(Annotations~.)
+
+# Plot the data - insert_size_standard_deviation
+Plot_insert_size_standard_deviation<-ggplot(all_data.wide, aes(x=Assembly, y=insert_size_standard_deviation))+
+  geom_boxplot(outliers = FALSE, color="darkgrey")+
+  geom_jitter(width=0.2, aes(color=Sample, shape=Sample))+
+  scale_color_viridis(discrete=TRUE, begin=0.1 ,end = 0.9, option = "plasma")+
+  labs(title="Insert size standard deviation", x="Sample", y="insert size\nstandard deviation")+
+  CS.THEME+
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),legend.position = "none")+
+  facet_grid(Annotations~.)
+
+# Combine all plots
+CombinedPlot<-plot_grid(Plot_mismatches, Plot_error_rate, Plot_outward_oriented_pairs, Plot_pairs_with_other_orientation, Plot_pairs_on_different_chromosomes, Plot_percentage_of_properly_paired_reads, Plot_insert_size_average, Plot_insert_size_standard_deviation, ncol=2, labels = "AUTO")
+
+CombinedPlot.gencode<-plot_grid(CombinedPlot, legendplot, ncol=1, rel_heights = c(1, 0.05))
+```
+
+```{r plot combined plot, include=TRUE, fig.width=12.5, fig.height=20}
+ggsave2("AlignmentQualityMetrics.gencode.png", CombinedPlot, width=12.5, height=20, dpi=300)
+CombinedPlot
+```
+
+```{r calculate summary statistics, include=TRUE}
+# I will calculate per group summary statistics for each metric
+# Metrics to calulate summary metrics for:
+# mismatches
+# error_rate
+# outward_oriented_pairs
+# pairs_with_other_orientation
+# pairs_on_different_chromosomes
+# percentage_of_properly_paired_reads_(%)
+# insert_size_average
+# insert_size_standard_deviation
+
+# Calculate summary statistics per sample
+all_data.wide %>%
+  group_by(Assembly, Sample) %>%
+  summarise(
+    mismatches_mean=mean(mismatches/1000000),
+    mismatches_sd=sd(mismatches/1000000),
+    error_rate_mean=mean(100*error_rate),
+    error_rate_sd=sd(100*error_rate),
+    outward_oriented_pairs_mean=mean(outward_oriented_pairs/1000000),
+    outward_oriented_pairs_sd=sd(outward_oriented_pairs/1000000),
+    pairs_with_other_orientation_mean=mean(pairs_with_other_orientation/1000),
+    pairs_with_other_orientation_sd=sd(pairs_with_other_orientation/1000),
+    pairs_on_different_chromosomes_mean=mean(pairs_on_different_chromosomes/1000),
+    pairs_on_different_chromosomes_sd=sd(pairs_on_different_chromosomes/1000),
+    percentage_of_properly_paired_reads_mean=mean(`percentage_of_properly_paired_reads_(%)`),
+    percentage_of_properly_paired_reads_sd=sd(`percentage_of_properly_paired_reads_(%)`),
+    insert_size_average_mean=mean(insert_size_average),
+    insert_size_average_sd=sd(insert_size_average),
+    insert_size_standard_deviation_mean=mean(insert_size_standard_deviation),
+    insert_size_standard_deviation_sd=sd(insert_size_standard_deviation)
+  ) -> summary_stats
+
+# Write summary statistics to file
+write.table(summary_stats, "AlignmentQualityMetrics_SummaryStatistics.csv", row.names=FALSE, quote = FALSE, sep = "\t")
+
+# Calculate summary statistics per assembly
+all_data.wide %>%
+  group_by(Assembly) %>%
+  summarise(
+    mismatches_mean=mean(mismatches/1000000),
+    mismatches_sd=sd(mismatches/1000000),
+    error_rate_mean=mean(100*error_rate),
+    error_rate_sd=sd(100*error_rate),
+    outward_oriented_pairs_mean=mean(outward_oriented_pairs/1000000),
+    outward_oriented_pairs_sd=sd(outward_oriented_pairs/1000000),
+    pairs_with_other_orientation_mean=mean(pairs_with_other_orientation/1000),
+    pairs_with_other_orientation_sd=sd(pairs_with_other_orientation/1000),
+    pairs_on_different_chromosomes_mean=mean(pairs_on_different_chromosomes/1000),
+    pairs_on_different_chromosomes_sd=sd(pairs_on_different_chromosomes/1000),
+    percentage_of_properly_paired_reads_mean=mean(`percentage_of_properly_paired_reads_(%)`),
+    percentage_of_properly_paired_reads_sd=sd(`percentage_of_properly_paired_reads_(%)`),
+    insert_size_average_mean=mean(insert_size_average),
+    insert_size_average_sd=sd(insert_size_average),
+    insert_size_standard_deviation_mean=mean(insert_size_standard_deviation),
+    insert_size_standard_deviation_sd=sd(insert_size_standard_deviation)
+  ) -> summary_stats_assembly
+```
+
+```{r print summary statistics by assembly, include=TRUE}
+# print summary statistics by assembly for each metric one by one
+print("Summary statistics by assembly")
+
+# mismatches
+summary_stats_assembly[,c("Assembly", "mismatches_mean")]
+summary_stats_assembly[,c("Assembly", "mismatches_sd")]
+
+# error_rate
+summary_stats_assembly[,c("Assembly", "error_rate_mean")]
+summary_stats_assembly[,c("Assembly", "error_rate_sd")]
+
+# outward_oriented_pairs
+summary_stats_assembly[,c("Assembly", "outward_oriented_pairs_mean")]
+summary_stats_assembly[,c("Assembly", "outward_oriented_pairs_sd")]
+
+# pairs_with_other_orientation
+summary_stats_assembly[,c("Assembly", "pairs_with_other_orientation_mean")]
+summary_stats_assembly[,c("Assembly", "pairs_with_other_orientation_sd")]
+
+# pairs_on_different_chromosomes
+summary_stats_assembly[,c("Assembly", "pairs_on_different_chromosomes_mean")]
+summary_stats_assembly[,c("Assembly", "pairs_on_different_chromosomes_sd")]
+
+# percentage_of_properly_paired_reads_(%)
+summary_stats_assembly[,c("Assembly", "percentage_of_properly_paired_reads_mean")]
+summary_stats_assembly[,c("Assembly", "percentage_of_properly_paired_reads_sd")]
+
+# insert_size_average
+summary_stats_assembly[,c("Assembly", "insert_size_average_mean")]
+summary_stats_assembly[,c("Assembly", "insert_size_average_sd")]
+
+# insert_size_standard_deviation
+summary_stats_assembly[,c("Assembly", "insert_size_standard_deviation_mean")]
+summary_stats_assembly[,c("Assembly", "insert_size_standard_deviation_sd")]
+```

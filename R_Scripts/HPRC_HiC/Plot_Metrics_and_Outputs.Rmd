@@ -1,0 +1,667 @@
+---
+title: "Hi-C Metrics and Outputs"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HiC/")
+
+library(ggplot2)
+library(cowplot)
+library(scales)
+library(tidyr)
+library(grid)
+library(gridExtra)
+library(factoextra)
+library(dplyr)
+### Need this to read .GZ files
+library(data.table)
+library(tidyverse)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+source("/Users/juanmacias/Documents/GitHub/JuanMacias_General_Code/R_Scripts/General/UsefulPlottingFunctions.R")
+```
+
+```{r Import QC and alignment metrics}
+Data<-read.delim("Latest_Alignment_Stats.txt",header = TRUE)
+```
+
+```{r Plotting Alignment Metrics, include=TRUE, fig.width=30, fig.height=18}
+QC.Colors<-viridis(2,option = "viridis", begin=0.55,end=0.9)
+
+Plot.A<-ggplot(subset(Data,STAT=="aligned"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,100))+
+  ylab("% Aligned (2 alignments)")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 90,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 75,color=QC.Colors[2],size=1.75,linetype=2)
+  
+Plot.B<-ggplot(subset(Data,STAT=="unique"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,100))+
+  ylab("% unique")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)
+
+Plot.C<-ggplot(subset(Data,STAT=="unique uniq"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,100))+
+  ylab("% unique uniq")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)
+
+Plot.D<-ggplot(subset(Data,STAT=="chimeric"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,35))+
+  ylab("% chimeric")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 10,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 30,color=QC.Colors[1],size=1.75)
+
+Plot.E<-ggplot(subset(Data,STAT=="chimeric uniq"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,50))+
+  ylab("% chimeric uniq")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 10,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 30,color=QC.Colors[1],size=1.75)
+
+Plot.F<-ggplot(subset(Data,STAT=="duplicates"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,45))+
+  ylab("% duplicates")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)
+
+Plot.G<-ggplot(subset(Data,STAT=="duplicates uniq"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,45))+
+  ylab("% duplicates uniq")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)
+
+Plot.H<-ggplot(subset(Data,STAT=="unmapped"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,10))+
+  ylab("% unmapped")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 10,color=QC.Colors[1],size=1.75)
+
+Plot.I<-ggplot(subset(Data,STAT=="hic_contacts"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,70))+
+  ylab("% hic_contacts")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 50,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 20,color=QC.Colors[2],size=1.75,linetype=2)
+
+Plot.J<-ggplot(subset(Data,STAT=="hic_contacts uniq"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,100))+
+  ylab("% hic_contacts uniq ")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 50,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 20,color=QC.Colors[2],size=1.75,linetype=2)
+
+Plot.K<-ggplot(subset(Data,STAT=="inter_chromosomal"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,50))+
+  ylab("% inter_chromosomal ")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)
+
+Plot.L<-ggplot(subset(Data,STAT=="inter_chromosomal uniq"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,50))+
+  ylab("% inter_chromosomal uniq")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)
+
+Plot.M<-ggplot(subset(Data,STAT=="intra_chromosomal"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,50))+
+  ylab("% intra_chromosomal ")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)
+
+Plot.N<-ggplot(subset(Data,STAT=="intra_chromosomal uniq"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,80))+
+  ylab("% intra_chromosomal uniq")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 40,color=QC.Colors[1],size=1.75)
+
+Plot.O<-ggplot(subset(Data,STAT=="short_range"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,70))+
+  ylab("% short_range")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 30,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 60,color=QC.Colors[2],size=1.75,linetype=2)
+
+Plot.P<-ggplot(subset(Data,STAT=="short_range uniq"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,70))+
+  ylab("% short_range uniq")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 30,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 60,color=QC.Colors[2],size=1.75,linetype=2)
+
+Plot.Q<-ggplot(subset(Data,STAT=="long_range"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,40))+
+  ylab("% long_range")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 35,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 20,color=QC.Colors[2],size=1.75,linetype=2)
+
+Plot.R<-ggplot(subset(Data,STAT=="long_range uniq"),aes(y=PERC,x=Genome))+
+  geom_bar(stat="identity", position = position_dodge())+
+  CS.THEME+
+  scale_y_continuous(expand = c(0,0),limits = c(0,60))+
+  ylab("% long_range uniq")+
+  facet_grid(~Sample)+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  geom_hline(yintercept = 35,color=QC.Colors[1],size=1.75)+
+  geom_hline(yintercept = 20,color=QC.Colors[2],size=1.75,linetype=2)
+
+
+AlignmentMetrics_Panel<-plot_grid(Plot.A,Plot.B,Plot.C,Plot.D,Plot.E,Plot.F,Plot.G,Plot.H,Plot.I,Plot.J,Plot.K,Plot.L,Plot.M,Plot.N,Plot.O,Plot.P,Plot.Q,Plot.R,labels = "AUTO", ncol = 4)
+
+ggsave2(filename = "AlignmentMetrics_Panel.png",plot = AlignmentMetrics_Panel, units = "in", width = 30, height = 18)
+
+AlignmentMetrics_Panel
+```
+
+```{r Perform PCA and partial eta squared calculations}
+### Dimensionality reduction of QC and Alignment metrics
+Data.Wide<-spread(Data[,c(1,4,6,7)], STAT, PERC)
+PCA.Subset<-Data.Wide[,c(3:20)]
+
+# Run PCA
+res.pca<-prcomp(PCA.Subset, scale=TRUE)
+
+# Get the partial eta squared values
+library(tidyr)
+PCA.VarObject<-cbind(res.pca$x,Data.Wide[,1:2])
+
+manova_model<-manova(cbind(PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8)~Sample*Genome,PCA.VarObject)
+manova_model.Summary<-summary(manova_model)
+aov_results <- summary.aov(manova_model)
+
+NUM.PCs<-8
+PC.PartialEtaSquareds<-lapply(1:NUM.PCs,
+                              function(PC){aov_results[[PC]][[2]][1:3]/sum(aov_results[[PC]][[2]])}
+) %>% do.call(rbind,.) %>% as.data.frame 
+
+colnames(PC.PartialEtaSquareds)<-c("Sample","Genome","Sample:Genome")
+
+PC.Statistics<-cbind(as.factor(1:NUM.PCs),get_eig(res.pca)[1:NUM.PCs,],PC.PartialEtaSquareds)
+colnames(PC.Statistics)<-c("PC","Eigenvalue","VariancePercent","CumulativeVariancePercent","PartialEtaSquared.Sample","PartialEtaSquared.Genome","PartialEtaSquared.Sample:Genome")
+rownames(PC.Statistics)<-NULL
+
+PC.Statistics$VariancePercent.Sample<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Sample
+PC.Statistics$VariancePercent.Genome<-PC.Statistics$VariancePercent*PC.Statistics$PartialEtaSquared.Genome
+PC.Statistics$VariancePercent.Sample.Genome<-PC.Statistics$VariancePercent*PC.Statistics$`PartialEtaSquared.Sample:Genome`
+
+# Save the PC statistics
+write.table(PC.Statistics, file = "PC.Statistics.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+```{r Plotting partial eta squared values, include=TRUE, fig.width=7, fig.height=6}
+# Make long df to plot variance percents
+PC.Statistics.VariancePercent.Long<-gather(PC.Statistics[,c(1,8:10)],key="VarianceType",value="VariancePercent",VariancePercent.Sample:VariancePercent.Sample.Genome)
+# clean up names
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("VariancePercent.","",PC.Statistics.VariancePercent.Long$VarianceType)
+PC.Statistics.VariancePercent.Long$VarianceType<-gsub("Sample.Genome","Sample:Genome",PC.Statistics.VariancePercent.Long$VarianceType)
+
+PC.Statistics.VariancePercent.Long$VarianceType<-factor(PC.Statistics.VariancePercent.Long$VarianceType, levels = c("Sample","Genome","Sample:Genome"), ordered = TRUE)
+
+Plot.PCs<-ggplot(PC.Statistics.VariancePercent.Long, aes(fill=VarianceType, y=VariancePercent, x=PC)) + 
+  geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values = c("#ff7f5d","#2d5879","#b2823f"))+
+  #scale_fill_manual(values = c("#2d5879","#aaaaaa","#333434","#ff7f5d","#b2823f"))+
+  ylab("Percent of variance")+
+  xlab("Principal component")+
+  ggtitle("Hi-C - QC metrics\n%Variance captured by PCs partitioned by factor")+
+  CS.THEME+
+  theme(legend.position="bottom")+
+  scale_y_continuous(limits = c(0,round(max(PC.Statistics$VariancePercent)*1.05)), expand = c(0,0))+
+  theme(legend.key.size = unit(0.2, "cm"))
+
+ggsave2(filename = "QC_PCs.png",plot = Plot.PCs,units = "in",width = 7, height = 6)
+
+Plot.PCs
+```
+
+```{r Plotting PCA, include=TRUE, fig.width=8.5, fig.height=4.5}
+# Plot PCA
+groups.Sample <- as.factor(Data.Wide$Sample)
+PCA.Plot.Sample<-fviz_pca_ind(res.pca,
+                              col.ind = groups.Sample,
+                              palette = viridis(5, end=0.9),
+                              repel = TRUE,
+                              addEllipses = TRUE,
+                              ellipse.type = "convex",
+                              title="Hi-C - Samples"
+)+
+  CS.THEME+
+  theme(legend.position="bottom",legend.text = element_text(size=8,hjust = 0.7), legend.title = element_text(size=12),legend.key.size = unit(0.25, "cm"))
+
+
+groups <- as.factor(Data.Wide$Genome)
+PCA.Plot.Genome<-fviz_pca_ind(res.pca,
+                              col.ind = groups,
+                              palette = viridis(4,option = "magma", end = 0.8),
+                              repel = TRUE,
+                              title="Hi-C - Genome"
+)+
+  CS.THEME+
+  theme(legend.position="bottom",legend.text = element_text(size=8,hjust = 0.7), legend.title = element_text(size=12),legend.key.size = unit(0.25, "cm"))
+
+PCA.Panel<-plot_grid(PCA.Plot.Sample,PCA.Plot.Genome,labels = c("J","K"),ncol=2)
+
+ggsave2(filename = "AlignmentMetrics.PCA.Panel.png",plot = PCA.Panel, units = "in", width = (17*0.75)*(2/3), height = 6*0.75)
+
+PCA.Panel
+```
+
+```{r}
+### Plot QC thresholds
+Data.Call.Wide<-spread(Data[,c(1,3,6,7)], STAT, CALL)
+Data.Call.Long<-gather(Data.Call.Wide, Statistic, Call, aligned:unmapped)
+
+CALL.Colors<-viridis(3,option = "plasma", begin=0.25,end=0.9)
+
+PlotStatisticCalls.Trends<-ggplot(subset(Data.Call.Long, Statistic %in% c("chimeric","chimeric uniq","intra_chromosomal","inter_chromosomal","inter_chromosomal uniq","intra_chromosomal uniq","unmapped")),aes(x=Genome, y=Statistic, fill=Call))+
+  geom_tile()+
+  facet_grid(~Sample)+
+  CS.THEME+
+  scale_y_discrete(expand = c(0,0))+
+  scale_x_discrete(expand = c(0,0))+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = CALL.Colors)
+
+PlotStatisticCalls.Thresholds<-ggplot(subset(Data.Call.Long, !(Statistic %in% c("chimeric","chimeric uniq","intra_chromosomal","inter_chromosomal","inter_chromosomal uniq","intra_chromosomal uniq","unmapped"))),aes(x=Genome, y=Statistic, fill=Call))+
+  geom_tile()+
+  facet_grid(~Sample)+
+  CS.THEME+
+  scale_y_discrete(expand = c(0,0))+
+  scale_x_discrete(expand = c(0,0))+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  scale_fill_manual(values = CALL.Colors)
+
+QC.Statistics.Call.Heatmaps<-plot_grid(PlotStatisticCalls.Trends,PlotStatisticCalls.Thresholds,labels = "AUTO", ncol = 1)
+
+ggsave2(filename = "QC.Statistics.Call.Heatmaps.png",plot = QC.Statistics.Call.Heatmaps, units = "in", width = 12, height = 6)
+
+QC.Statistics.Call.Heatmaps
+```
+
+```{r Import DELTA Loop calls, include=TRUE}
+### Define runs directory list
+LISTOFRUNS<-dir(path = "Pipeline_Outputs/")[!c(dir(path = "Pipeline_Outputs/") %in% c("inputs","old"))]
+
+#### DELTA Loop calls
+## Import
+Delta_CombinedLoopCallsDF<-NULL
+
+for (SAMPLE.GENOME.PAIR.ID in LISTOFRUNS) {
+  print(SAMPLE.GENOME.PAIR.ID)
+  
+  FILENAME<-paste("Pipeline_Outputs/",SAMPLE.GENOME.PAIR.ID,"/delta/predicted_loops_merged.bedpe.gz", sep = "")
+  TEMP<-fread(FILENAME)
+  
+  SAMPLE<-strsplit(SAMPLE.GENOME.PAIR.ID,split = "[.]")[[1]][1]
+  GENOME<-strsplit(SAMPLE.GENOME.PAIR.ID,split = "[.]")[[1]][2]
+  
+  TEMP$Sample<-SAMPLE
+  TEMP$Genome<-GENOME
+  
+  Delta_CombinedLoopCallsDF<-rbind(TEMP,Delta_CombinedLoopCallsDF)
+}
+rm(TEMP)
+rm(SAMPLE)
+rm(GENOME)
+rm(FILENAME)
+
+### Rename Genomes
+Delta_CombinedLoopCallsDF$Genome[grep("mat",Delta_CombinedLoopCallsDF$Genome)]<-"Maternal"
+Delta_CombinedLoopCallsDF$Genome[grep("pat",Delta_CombinedLoopCallsDF$Genome)]<-"Paternal"
+
+### Save the data
+write.table(Delta_CombinedLoopCallsDF, file = "Delta_CombinedLoopCallsDF.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+### Check to make sure all runs imported
+table(Delta_CombinedLoopCallsDF[,12:13])
+```
+
+```{r plot DELTA Loop calls, include=TRUE, fig.width=8.5, fig.height=12}
+### Plot counts
+Delta_NumberOfLoops<-ggplot(Delta_CombinedLoopCallsDF, aes(x=Genome))+
+  geom_bar(stat = "count")+
+  CS.THEME+
+  facet_grid(~Sample)+
+  scale_y_continuous(expand = c(0,0),limits = c(0,4500))+
+  ylab("Number of Loops")+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  CS.THEME
+
+### Plot Scores
+Delta_DistributionOfLoopScores<-ggplot(Delta_CombinedLoopCallsDF, aes(x=Genome,y=score))+
+  geom_violin(fill="grey")+
+  facet_grid(~Sample)+
+  scale_y_continuous(expand = c(0,0),limits = c(0.84,0.95))+
+  ylab("Loop Score")+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  CS.THEME
+
+Delta_DistributionOfLoopDistance<-ggplot(Delta_CombinedLoopCallsDF, aes(x= (y2-x2)/1000 ))+
+  geom_histogram(bins = 50)+
+  facet_grid(Genome~Sample)+
+  scale_x_continuous(trans = "log10")+
+  xlab("Loop distance (Kb)")+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  CS.THEME
+
+DeltaPanel<-plot_grid(Delta_NumberOfLoops,Delta_DistributionOfLoopScores,Delta_DistributionOfLoopDistance, labels = "AUTO", ncol=1, rel_heights = c(1,1,2))
+
+ggsave2(filename = "Delta_Panel.png", plot = DeltaPanel, units = "in", height = 12, width = 8.5)
+
+DeltaPanel
+```
+
+```{r Import HiCCUPS Loop calls, include=TRUE}
+#### HiCCUPS Loop calls
+## Import
+HiCCUPS_CombinedLoopCallsDF<-NULL
+
+for (SAMPLE.GENOME.PAIR.ID in LISTOFRUNS) {
+  print(SAMPLE.GENOME.PAIR.ID)
+  
+  FILENAME<-paste("Pipeline_Outputs/",SAMPLE.GENOME.PAIR.ID,"/hiccups/shard1/merged_loops_30.bedpe.gz", sep = "")
+  TEMP<-fread(FILENAME,skip=2)
+  
+  SAMPLE<-strsplit(SAMPLE.GENOME.PAIR.ID,split = "[.]")[[1]][1]
+  GENOME<-strsplit(SAMPLE.GENOME.PAIR.ID,split = "[.]")[[1]][2]
+  
+  TEMP$Sample<-SAMPLE
+  TEMP$Genome<-GENOME
+  
+  HiCCUPS_CombinedLoopCallsDF<-rbind(TEMP,HiCCUPS_CombinedLoopCallsDF)
+}
+rm(TEMP)
+rm(SAMPLE)
+rm(GENOME)
+rm(FILENAME)
+
+colnames(HiCCUPS_CombinedLoopCallsDF)<-c("chr1","x1","x2","chr2","y1","y2","name","score","strand1","strand2","color","observed","expectedBL","expectedDonut","expectedH","expectedV","fdrBL","fdrDonut","fdrH","fdrV","numCollapsed","centroid1","centroid2","radius","Sample","Genome")
+head(HiCCUPS_CombinedLoopCallsDF)
+
+### Rename Genomes
+HiCCUPS_CombinedLoopCallsDF$Genome[grep("mat",HiCCUPS_CombinedLoopCallsDF$Genome)]<-"Maternal"
+HiCCUPS_CombinedLoopCallsDF$Genome[grep("pat",HiCCUPS_CombinedLoopCallsDF$Genome)]<-"Paternal"
+
+### Save the data
+write.table(HiCCUPS_CombinedLoopCallsDF, file = "HiCCUPS_CombinedLoopCallsDF.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+### Check to make sure all runs imported
+table(HiCCUPS_CombinedLoopCallsDF[,25:26])
+```
+
+```{r plot HiCCUPS Loop calls, include=TRUE, fig.width=25, fig.height=10}
+### Plot counts
+HiCCUPS_NumberOfLoops<-ggplot(HiCCUPS_CombinedLoopCallsDF, aes(x=Genome))+
+  geom_bar(stat = "count")+
+  CS.THEME+
+  facet_wrap(~Sample)+
+  scale_y_continuous(expand = c(0,0),limits = c(0,6000))+
+  ylab("Number of Loops")+
+  theme(axis.text.x = element_text(angle = 60,hjust=1))+
+  CS.THEME
+
+### Plot Scores/Sig
+HiCCUPS_SigBL<-ggplot(HiCCUPS_CombinedLoopCallsDF, aes(x=observed/expectedBL,y=-log10(fdrBL) ))+
+  geom_point(size=0.25)+
+  facet_grid(Genome~Sample)+
+  scale_x_continuous(trans = "log2")+
+  geom_hline(yintercept = -log10(0.01), color="red")+
+  ylab("-log10(fdr) Bottom-Left")+
+  xlab("Observed/Expected Bottom-Left")+
+  CS.THEME
+
+HiCCUPS_SigDonut<-ggplot(HiCCUPS_CombinedLoopCallsDF, aes(x=observed/expectedDonut,y=-log10(fdrDonut) ))+
+  geom_point(size=0.25)+
+  facet_grid(Genome~Sample)+
+  scale_x_continuous(trans = "log2")+
+  geom_hline(yintercept = -log10(0.01), color="red")+
+  ylab("-log10(fdr) Donut")+
+  xlab("Observed/Expected Donut")+
+  CS.THEME
+
+HiCCUPS_SigHorizontal<-ggplot(HiCCUPS_CombinedLoopCallsDF, aes(x=observed/expectedH,y=-log10(fdrH) ))+
+  geom_point(size=0.25)+
+  facet_grid(Genome~Sample)+
+  scale_x_continuous(trans = "log2")+
+  geom_hline(yintercept = -log10(0.01), color="red")+
+  ylab("-log10(fdr) Horizontal")+
+  xlab("Observed/Expected Horizontal")+
+  CS.THEME
+
+HiCCUPS_SigVertical<-ggplot(HiCCUPS_CombinedLoopCallsDF, aes(x=observed/expectedV,y=-log10(fdrV) ))+
+  geom_point(size=0.25)+
+  facet_grid(Genome~Sample)+
+  scale_x_continuous(trans = "log2")+
+  geom_hline(yintercept = -log10(0.01), color="red")+
+  ylab("-log10(fdr) Vertical")+
+  xlab("Observed/Expected Vertical")+
+  CS.THEME
+
+HiCCUPS_DistributionOfLoopDistance<-ggplot(HiCCUPS_CombinedLoopCallsDF, aes(x= (centroid2-centroid1)/1000 ))+
+  geom_histogram(bins = 50)+
+  facet_grid(Genome~Sample)+
+  scale_x_continuous(trans = "log10")+
+  xlab("Loop centroid distance (Kb)")+
+  theme(axis.text.x = element_text(angle = 30,hjust=1))+
+  CS.THEME
+
+HiCCUPS_DistributionOfradius<-ggplot(HiCCUPS_CombinedLoopCallsDF, aes(x= radius/1000 ))+
+  geom_histogram(bins = 25)+
+  facet_grid(Genome~Sample)+
+  xlab("Loop radius (Kb)")+
+  CS.THEME
+
+HiCCUPS_DistributionOfPixelsCollapsed<-ggplot(HiCCUPS_CombinedLoopCallsDF, aes(x= numCollapsed ))+
+  geom_histogram(bins = 12)+
+  facet_grid(Genome~Sample)+
+  xlab("Number of Pixels collapsed")+
+  CS.THEME
+
+
+### Put together panel
+HiCCUPSPanel<-plot_grid(HiCCUPS_NumberOfLoops,HiCCUPS_SigBL,HiCCUPS_SigDonut,HiCCUPS_SigHorizontal,HiCCUPS_SigVertical,HiCCUPS_DistributionOfLoopDistance,HiCCUPS_DistributionOfradius,HiCCUPS_DistributionOfPixelsCollapsed, labels = "AUTO", ncol=4)
+
+ggsave2(filename = "HiCCUPS_Panel.png", plot = HiCCUPSPanel, units = "in", height = 10, width = 25)
+```
+
+```{r import Arrowhead calls, include=TRUE}
+#### Arrowhead calls
+## Import
+CombinedArrowHeadCallsDF<-NULL
+
+for (SAMPLE.GENOME.PAIR.ID in LISTOFRUNS) {
+  print(SAMPLE.GENOME.PAIR.ID)
+  
+  FILENAME<-paste("Pipeline_Outputs/",SAMPLE.GENOME.PAIR.ID,"/arrowhead/shard1/10000_blocks_30.bedpe.gz", sep = "")
+  TEMP<-fread(FILENAME,skip=2)
+  
+  SAMPLE<-strsplit(SAMPLE.GENOME.PAIR.ID,split = "[.]")[[1]][1]
+  GENOME<-strsplit(SAMPLE.GENOME.PAIR.ID,split = "[.]")[[1]][2]
+  
+  TEMP$Sample<-SAMPLE
+  TEMP$Genome<-GENOME
+  
+  CombinedArrowHeadCallsDF<-rbind(TEMP,CombinedArrowHeadCallsDF)
+}
+rm(TEMP)
+rm(SAMPLE)
+rm(GENOME)
+rm(FILENAME)
+
+head(CombinedArrowHeadCallsDF)
+
+colnames(CombinedArrowHeadCallsDF)<-c("chr.1","x1","x2","chr.2","y1","y2","name","score","strand1","strand2","color","score","uVarScore","lVarScore","upSign","loSign","Sample","Genome")
+
+### Rename Genomes
+CombinedArrowHeadCallsDF$Genome[grep("mat",CombinedArrowHeadCallsDF$Genome)]<-"Maternal"
+CombinedArrowHeadCallsDF$Genome[grep("pat",CombinedArrowHeadCallsDF$Genome)]<-"Paternal"
+
+ArrowHeadsCounts.Matrix<-as.matrix(table(CombinedArrowHeadCallsDF[,17:18]))
+
+ArrowHeadsCounts.DF<-as.data.frame(ArrowHeadsCounts.Matrix)
+
+### Save the data
+write.table(CombinedArrowHeadCallsDF, file = "CombinedArrowHeadCallsDF.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+```{r plot Arrowhead panel, include=TRUE, fig.width=8.5, fig.height=6}
+PlotB.Total<-ggplot(ArrowHeadsCounts.DF, aes(x=Genome,y=Freq))+
+  geom_bar(stat = "identity")+
+  facet_wrap(~Sample)+
+  CS.THEME+
+  ylab("Number of TADs")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+CombinedArrowHeadCallsDF<-as.data.frame(CombinedArrowHeadCallsDF)
+colnames(CombinedArrowHeadCallsDF) <- make.unique(names(CombinedArrowHeadCallsDF))
+CombinedArrowHeadCallsDF$Size<-CombinedArrowHeadCallsDF$x2-CombinedArrowHeadCallsDF$x1
+
+ArrowHeadsChromCounts.CHM13.Matrix<-as.matrix(table(subset(CombinedArrowHeadCallsDF,Genome=="CHM13")[,c(1,17)]))
+ArrowHeadsChromCounts.CHM13.DF<-as.data.frame(ArrowHeadsChromCounts.CHM13.Matrix)
+ArrowHeadsChromCounts.CHM13.DF$Genome<-"CHM13"
+
+ArrowHeadsChromCounts.hg38.Matrix<-as.matrix(table(subset(CombinedArrowHeadCallsDF,Genome=="GRCh38")[,c(1,17)]))
+ArrowHeadsChromCounts.hg38.DF<-as.data.frame(ArrowHeadsChromCounts.hg38.Matrix)
+ArrowHeadsChromCounts.hg38.DF$Genome<-"hg38"
+
+ArrowHeadsChromCounts.Maternal.Matrix<-as.matrix(table(subset(CombinedArrowHeadCallsDF,Genome=="Maternal")[,c(1,17)]))
+ArrowHeadsChromCounts.Maternal.DF<-as.data.frame(ArrowHeadsChromCounts.Maternal.Matrix)
+ArrowHeadsChromCounts.Maternal.DF$Genome<-"Maternal"
+
+ArrowHeadsChromCounts.Paternal.Matrix<-as.matrix(table(subset(CombinedArrowHeadCallsDF,Genome=="Paternal")[,c(1,17)]))
+ArrowHeadsChromCounts.Paternal.DF<-as.data.frame(ArrowHeadsChromCounts.Paternal.Matrix)
+ArrowHeadsChromCounts.Paternal.DF$Genome<-"Paternal"
+
+ArrowHeadsChromCounts.ALl.DF<-rbind(ArrowHeadsChromCounts.CHM13.DF,ArrowHeadsChromCounts.hg38.DF,ArrowHeadsChromCounts.Maternal.DF,ArrowHeadsChromCounts.Paternal.DF)
+
+
+# order chromosomes
+ArrowHeadsChromCounts.ALl.DF$chr.1<-factor(ArrowHeadsChromCounts.ALl.DF$chr.1, c("chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chr20","chr21","chr22","chrX","chrY"), ordered = TRUE)
+
+PlotA.ChromTotal<-ggplot(ArrowHeadsChromCounts.ALl.DF, aes(x=Genome,y=Freq))+
+  geom_bar(stat = "identity")+
+  facet_grid(Sample~chr.1)+
+  CS.THEME+
+  ylab("Number of TADs")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+PlotC.Size<-ggplot(CombinedArrowHeadCallsDF,aes(x=Size/1000000))+
+  geom_histogram(bins = 50)+
+  facet_grid(Genome~Sample)+
+  scale_y_continuous(trans = "log2")+
+  xlab("TAD Size (Mb)")+
+  CS.THEME
+
+PlotD.VarScores<-ggplot(CombinedArrowHeadCallsDF,aes(x=uVarScore,y=lVarScore))+
+  geom_bin2d()+
+  facet_grid(Genome~Sample)+
+  CS.THEME+
+  scale_fill_viridis()+
+  xlab("uVarScore")+
+  ylab("lVarScore")
+
+PlotE.Scores<-ggplot(CombinedArrowHeadCallsDF,aes(x=score.1))+
+  geom_histogram(bins = 50)+
+  facet_grid(Genome~Sample)+
+  xlab("Score")+
+  CS.THEME
+
+# Save parts
+ggsave2(filename = "ArrowHead_PlotB.Total.png",plot = PlotB.Total,units = "in", height = 4, width = 7)
+ggsave2(filename = "ArrowHead_PlotA.ChromTotal.png",plot = PlotA.ChromTotal,units = "in", height = 6, width = 24)
+ggsave2(filename = "ArrowHead_PlotC.Size.png",plot = PlotC.Size,units = "in", height = 5, width = 6)
+ggsave2(filename = "ArrowHead_PlotD.Size.png",plot = PlotD.VarScores,units = "in", height = 8, width = 10)
+ggsave2(filename = "ArrowHead_PlotE.Size.png",plot = PlotE.Scores,units = "in", height = 5, width = 7)
+
+### Import Plot parts
+PlotB.Total <- ggdraw() + draw_image("ArrowHead_PlotB.Total.png")
+PlotA.ChromTotal <- ggdraw() + draw_image("ArrowHead_PlotA.ChromTotal.png")
+PlotC.Size <- ggdraw() + draw_image("ArrowHead_PlotC.Size.png")
+PlotD.VarScores <- ggdraw() + draw_image("ArrowHead_PlotD.Size.png")
+PlotE.Scores <- ggdraw() + draw_image("ArrowHead_PlotE.Size.png")
+
+### Clean up temp plot files
+file.remove("ArrowHead_PlotB.Total.png")
+file.remove("ArrowHead_PlotA.ChromTotal.png")
+file.remove("ArrowHead_PlotC.Size.png")
+file.remove("ArrowHead_PlotD.Size.png")
+file.remove("ArrowHead_PlotE.Size.png")
+
+### Make pieces
+ArrowHeadRight<-plot_grid(PlotB.Total,PlotC.Size,PlotD.VarScores,PlotE.Scores,labels = c("B","C","D"))
+ArrowHeadLeft<-plot_grid(PlotA.ChromTotal,labels = "A")
+
+### Build layout
+LEN<-25
+WID<-25
+P1<-matrix(rep(1,LEN*WID),ncol = WID)
+
+LEN<-25
+WID<-10
+P2<-matrix(rep(2,LEN*WID),ncol = WID)
+
+Layout<-cbind(P1,P2)
+plotLayout(Layout)
+
+### Put together ArrowHead Panel
+ArrowHeadPanel<-grid.arrange(grobs=list(ArrowHeadLeft,ArrowHeadRight),layout_matrix = Layout)
+ggsave2(filename = "ArrowHeadPanel.png",plot = ArrowHeadPanel,units = "in",height = 7,width = 30)
+```

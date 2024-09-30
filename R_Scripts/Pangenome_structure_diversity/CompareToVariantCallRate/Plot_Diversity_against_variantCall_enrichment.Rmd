@@ -1,0 +1,138 @@
+---
+title: "Compare pangenome structure to variant call enrichment"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Set input file path for diversity metrics
+## 24kb bins
+InputFile.24Kb.Diversity<-"/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Pangenome_Diversity_Association/CompareToVariantCallRate/Bins_24kb_Diversity_Metrics.bed"
+## 200kb bins
+InputFile.200Kb.Diversity<-"/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Pangenome_Diversity_Association/CompareToVariantCallRate/Bins_200kb_Diversity_Metrics.bed"
+
+# Set input file path for variant call rate SVs
+InputFile.VariantCallRate.SV<-"/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/24Kb_Regions_Enriched_in_SV_AllData.txt"
+
+# Set input file path for variant call rate SNPs
+InputFile.VariantCallRate.SNP<-"/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/24kb_Regions_Enriched_in_SNP_PASS_AllData.txt"
+
+# Set input file path for variant call rate Indels
+InputFile.VariantCallRate.Indels<-"/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/24kb_Regions_Enriched_in_Indel_PASS_AllData.txt"
+
+# Set seed
+set.seed(0)
+
+# Load packages
+library(ggplot2)
+require(cowplot)
+library(viridis)
+library(tidyr)
+
+theme_set(theme_cowplot())
+
+# Set theme object
+CS.THEME<-theme(
+  panel.background = element_rect(fill="white"),
+  panel.grid.major=element_line(color="gray90", linetype="solid"), #adds major grid lines
+  panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65), #adds minor grid lines
+  panel.border=element_rect(fill=NA, color="black", size=1.5, linetype="solid"), #draws a black border around plot
+  axis.line=element_blank(),
+  text=element_text(colour = "black", family= "Arial")
+)
+```
+
+```{r runcode import data, include=FALSE}
+# Read diversity metrics files
+## 24Kb bins
+DiversityMetrics.24Kb<-read.table(InputFile.24Kb.Diversity, header=FALSE, sep="\t", stringsAsFactors=FALSE)
+colnames(DiversityMetrics.24Kb)<-c("Chr", "Start", "Stop", "ShannonIndex.mean", "ShannonIndex.max", "ShannonIndex.min", "ShannonIndex.count", "NonRefAlleles.mean","NonRefAlleles.sum","NonRefAlleles.max","NonRefAlleles.min","TotalHaplotypes.mean","TotalHaplotypes.max","TotalHaplotypes.min")
+## 200kb bins
+DivMetrics.200Kb<-read.table(InputFile.200Kb.Diversity, header=FALSE, sep="\t", stringsAsFactors=FALSE)
+colnames(DivMetrics.200Kb)<-c("Chr", "Start", "Stop", "ShannonIndex.mean", "ShannonIndex.max", "ShannonIndex.min", "ShannonIndex.count", "NonRefAlleles.mean","NonRefAlleles.sum","NonRefAlleles.max","NonRefAlleles.min","TotalHaplotypes.mean","TotalHaplotypes.max","TotalHaplotypes.min")
+
+# Convert "." to NA
+DiversityMetrics.24Kb[DiversityMetrics.24Kb=="."]<-NA
+DivMetrics.200Kb[DivMetrics.200Kb=="."]<-NA
+
+# Convert to numeric
+DivMetrics.200Kb$ShannonIndex.mean<-as.numeric(DivMetrics.200Kb$ShannonIndex.mean)
+DiversityMetrics.24Kb$ShannonIndex.mean<-as.numeric(DiversityMetrics.24Kb$ShannonIndex.mean)
+
+DivMetrics.200Kb$NonRefAlleles.sum<-as.numeric(DivMetrics.200Kb$NonRefAlleles.sum)
+DiversityMetrics.24Kb$NonRefAlleles.sum<-as.numeric(DiversityMetrics.24Kb$NonRefAlleles.sum)
+
+DivMetrics.200Kb$NonRefAlleles.mean<-as.numeric(DivMetrics.200Kb$NonRefAlleles.mean)
+DiversityMetrics.24Kb$NonRefAlleles.mean<-as.numeric(DiversityMetrics.24Kb$NonRefAlleles.mean)
+
+# Read variant call rate file
+## SVs
+VariantCallRate.SV<-read.table(InputFile.VariantCallRate.SV, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+## SNPs
+VariantCallRate.SNP<-read.table(InputFile.VariantCallRate.SNP, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+## Indels
+VariantCallRate.Indels<-read.table(InputFile.VariantCallRate.Indels, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+
+# Add diversity metrics to variant call rate data
+## SVs
+VariantCallRate.SV<-merge(VariantCallRate.SV, DiversityMetrics.24Kb, by=c("Chr", "Start", "Stop"), all.x=TRUE)
+## SNPs
+VariantCallRate.SNP<-merge(VariantCallRate.SNP, DiversityMetrics.24Kb, by=c("Chr", "Start", "Stop"), all.x=TRUE)
+## Indels
+VariantCallRate.Indels<-merge(VariantCallRate.Indels, DiversityMetrics.24Kb, by=c("Chr", "Start", "Stop"), all.x=TRUE)
+
+# Sum counts of all variants
+VariantCallRate.SV$TotalVariantCount<-VariantCallRate.SV$Count+VariantCallRate.SNP$Count+VariantCallRate.Indels$Count
+VariantCallRate.SNP$TotalVariantCount<-VariantCallRate.SV$Count+VariantCallRate.SNP$Count+VariantCallRate.Indels$Count
+VariantCallRate.Indels$TotalVariantCount<-VariantCallRate.SV$Count+VariantCallRate.SNP$Count+VariantCallRate.Indels$Count
+
+# Order by chromosome as ordered factor
+VariantCallRate.SV$Chr<-factor(VariantCallRate.SV$Chr, levels=c(paste0("chr",c(1:22)), "chrX", "chrY"))
+VariantCallRate.SNP$Chr<-factor(VariantCallRate.SNP$Chr, levels=c(paste0("chr",c(1:22)), "chrX", "chrY"))
+VariantCallRate.Indels$Chr<-factor(VariantCallRate.Indels$Chr, levels=c(paste0("chr",c(1:22)), "chrX", "chrY"))
+
+# Make all columns but 1-3 and 8 numeric. Out of 1:n
+VariantCallRate.SV[,c(4:7,9:ncol(VariantCallRate.SV))]<-lapply(VariantCallRate.SV[,c(4:7,9:ncol(VariantCallRate.SV))], as.numeric)
+VariantCallRate.SNP[,c(4:7,9:ncol(VariantCallRate.SNP))]<-lapply(VariantCallRate.SNP[,c(4:7,9:ncol(VariantCallRate.SNP))], as.numeric)
+VariantCallRate.Indels[,c(4:7,9:ncol(VariantCallRate.Indels))]<-lapply(VariantCallRate.Indels[,c(4:7,9:ncol(VariantCallRate.Indels))], as.numeric)
+```
+
+```{r Do any of the terms correlate with each other?, include=TRUE}
+cor(as.matrix(VariantCallRate.SV[,4:20]), use = "pairwise.complete.obs", method = "spearman")
+```
+
+```{r How much does NonRefAlleles.sum predict TotalVariantCount?, include=TRUE}
+fit<-lm(TotalVariantCount~., data=VariantCallRate.SV[,c(14,20)])
+summary(fit)
+
+spearman<-cor(as.matrix(VariantCallRate.SV[,c(14,20)]), use = "pairwise.complete.obs", method = "spearman")
+spearman
+```
+
+```{r ,include=TRUE, fig.width=20, fig.height=10}
+ggplot(VariantCallRate.SV, aes(x=Start/1000000,y=NonRefAlleles.sum, color=Significant))+
+  geom_point(size=0.5, stroke=0)+
+  facet_wrap(Chr~.)+
+  xlab("Start (Mb)")
+```
+
+```{r plot NonRefAlleles.sum vs TotalVariantCount, include=TRUE, fig.width=4.5, fig.height=4}
+DiversityVsVarCallsPlot<-ggplot(subset(VariantCallRate.SV, NonRefAlleles.sum>0 & TotalVariantCount>0), aes(x=NonRefAlleles.sum, y=TotalVariantCount))+
+  geom_point(size=0.5, stroke=0, alpha=0.1)+
+  scale_y_continuous(trans="log2")+
+  scale_x_continuous(trans="log2")+
+  geom_abline(intercept=0, slope=1, color="red")+
+  CS.THEME+
+  xlab("Pangenome: Total Non-reference alleles")+
+  ylab("Variant Calling: Total variant count")+
+  # add spearman correlation value
+  annotate("text", x = 8, y = 64, label = paste("ρ =", round(spearman[1,2], 2)), size = 3) +
+  theme(legend.position="none")
+
+ggsave(plot = DiversityVsVarCallsPlot, filename = "NonRefAlleles_vs_TotalVariantCount.png", width = 4.5, height = 4, dpi = 300)
+
+DiversityVsVarCallsPlot
+```

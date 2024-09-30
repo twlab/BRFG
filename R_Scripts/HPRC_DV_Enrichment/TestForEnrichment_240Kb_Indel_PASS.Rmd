@@ -1,0 +1,377 @@
+---
+title: "Testing 240Kb genomic regions for elevated rates of Indel PASS calls"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/")
+rm(list = ls())
+set.seed(0)
+
+library(ggplot2)
+require(cowplot)
+library(scales)
+library(gridExtra)
+library(grid)
+library(dplyr)
+library(tidyr)
+library(lsr)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r read in real data, include=FALSE}
+Real.Data<-read.delim("DV_INDELs_Intersection_Real_With_240kbBins_NoDups.bed", header = FALSE)
+colnames(Real.Data)<-c("Chr","Start","Stop","Count")
+```
+
+```{r read in permuted data, include=FALSE}
+Shuffled.Data<-read.delim(gzfile("Combined_DV_INDELs_Intersection_Shuffles_With_240kbBins.bed.gz"), header = FALSE)
+colnames(Shuffled.Data)<-c("Chr","Start","Stop","Count")
+```
+
+```{r Build Significance estimation functions, include=FALSE}
+LinesPerShuffle<-dim(Shuffled.Data)[1]/1000
+
+### Build Significance estimation function
+ShuffledECDF.1<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr1")$Count)
+ShuffledECDF.2<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr2")$Count)
+ShuffledECDF.3<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr3")$Count)
+ShuffledECDF.4<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr4")$Count)
+ShuffledECDF.5<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr5")$Count)
+ShuffledECDF.6<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr6")$Count)
+ShuffledECDF.7<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr7")$Count)
+ShuffledECDF.8<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr8")$Count)
+ShuffledECDF.9<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr9")$Count)
+ShuffledECDF.10<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr10")$Count)
+ShuffledECDF.11<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr11")$Count)
+ShuffledECDF.12<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr12")$Count)
+ShuffledECDF.13<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr13")$Count)
+ShuffledECDF.14<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr14")$Count)
+ShuffledECDF.15<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr15")$Count)
+ShuffledECDF.16<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr16")$Count)
+ShuffledECDF.17<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr17")$Count)
+ShuffledECDF.18<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr18")$Count)
+ShuffledECDF.19<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr19")$Count)
+ShuffledECDF.20<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr20")$Count)
+ShuffledECDF.21<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr21")$Count)
+ShuffledECDF.22<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chr22")$Count)
+ShuffledECDF.X<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chrX")$Count)
+ShuffledECDF.Y<-ecdf(x = subset(Shuffled.Data[1:LinesPerShuffle,],Chr=="chrY")$Count)
+
+calculatePvalue<-function(Count,Chr){
+  if(Chr=="chr1"){
+    1-ShuffledECDF.1(Count)
+  }
+  else if(Chr=="chr2"){
+    1-ShuffledECDF.2(Count)
+  }
+  else if(Chr=="chr3"){
+    1-ShuffledECDF.3(Count)
+  }
+  else if(Chr=="chr4"){
+    1-ShuffledECDF.4(Count)
+  }
+  else if(Chr=="chr5"){
+    1-ShuffledECDF.5(Count)
+  }
+  else if(Chr=="chr6"){
+    1-ShuffledECDF.6(Count)
+  }
+  else if(Chr=="chr7"){
+    1-ShuffledECDF.7(Count)
+  }
+  else if(Chr=="chr8"){
+    1-ShuffledECDF.8(Count)
+  }
+  else if(Chr=="chr9"){
+    1-ShuffledECDF.9(Count)
+  }
+  else if(Chr=="chr10"){
+    1-ShuffledECDF.10(Count)
+  }
+  else if(Chr=="chr11"){
+    1-ShuffledECDF.11(Count)
+  }
+  else if(Chr=="chr12"){
+    1-ShuffledECDF.12(Count)
+  }
+  else if(Chr=="chr13"){
+    1-ShuffledECDF.13(Count)
+  }
+  else if(Chr=="chr14"){
+    1-ShuffledECDF.14(Count)
+  }
+  else if(Chr=="chr15"){
+    1-ShuffledECDF.15(Count)
+  }
+  else if(Chr=="chr16"){
+    1-ShuffledECDF.16(Count)
+  }
+  else if(Chr=="chr17"){
+    1-ShuffledECDF.17(Count)
+  }
+  else if(Chr=="chr18"){
+    1-ShuffledECDF.18(Count)
+  }
+  else if(Chr=="chr19"){
+    1-ShuffledECDF.19(Count)
+  }
+  else if(Chr=="chr20"){
+    1-ShuffledECDF.20(Count)
+  }
+  else if(Chr=="chr21"){
+    1-ShuffledECDF.21(Count)
+  }
+  else if(Chr=="chr22"){
+    1-ShuffledECDF.22(Count)
+  }
+  else if(Chr=="chrX"){
+    1-ShuffledECDF.X(Count)
+  }
+  else if(Chr=="chrY"){
+    1-ShuffledECDF.Y(Count)
+  }
+}
+
+```
+
+```{r Calculate p-values, include=FALSE}
+Real.Data$Pvalue<-"NA"
+Real.Data[Real.Data=="chr1",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr1",]$Count, function(X) calculatePvalue(X, "chr1") ) )
+Real.Data[Real.Data=="chr2",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr2",]$Count, function(X) calculatePvalue(X, "chr2") ) )
+Real.Data[Real.Data=="chr3",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr3",]$Count, function(X) calculatePvalue(X, "chr3") ) )
+Real.Data[Real.Data=="chr4",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr4",]$Count, function(X) calculatePvalue(X, "chr4") ) )
+Real.Data[Real.Data=="chr5",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr5",]$Count, function(X) calculatePvalue(X, "chr5") ) )
+Real.Data[Real.Data=="chr6",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr6",]$Count, function(X) calculatePvalue(X, "chr6") ) )
+Real.Data[Real.Data=="chr7",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr7",]$Count, function(X) calculatePvalue(X, "chr7") ) )
+Real.Data[Real.Data=="chr8",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr8",]$Count, function(X) calculatePvalue(X, "chr8") ) )
+Real.Data[Real.Data=="chr9",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr9",]$Count, function(X) calculatePvalue(X, "chr9") ) )
+Real.Data[Real.Data=="chr10",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr10",]$Count, function(X) calculatePvalue(X, "chr10") ) )
+Real.Data[Real.Data=="chr11",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr11",]$Count, function(X) calculatePvalue(X, "chr11") ) )
+Real.Data[Real.Data=="chr12",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr12",]$Count, function(X) calculatePvalue(X, "chr12") ) )
+Real.Data[Real.Data=="chr13",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr13",]$Count, function(X) calculatePvalue(X, "chr13") ) )
+Real.Data[Real.Data=="chr14",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr14",]$Count, function(X) calculatePvalue(X, "chr14") ) )
+Real.Data[Real.Data=="chr15",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr15",]$Count, function(X) calculatePvalue(X, "chr15") ) )
+Real.Data[Real.Data=="chr16",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr16",]$Count, function(X) calculatePvalue(X, "chr16") ) )
+Real.Data[Real.Data=="chr17",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr17",]$Count, function(X) calculatePvalue(X, "chr17") ) )
+Real.Data[Real.Data=="chr18",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr18",]$Count, function(X) calculatePvalue(X, "chr18") ) )
+Real.Data[Real.Data=="chr19",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr19",]$Count, function(X) calculatePvalue(X, "chr19") ) )
+Real.Data[Real.Data=="chr20",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr20",]$Count, function(X) calculatePvalue(X, "chr20") ) )
+Real.Data[Real.Data=="chr21",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr21",]$Count, function(X) calculatePvalue(X, "chr21") ) )
+Real.Data[Real.Data=="chr22",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chr22",]$Count, function(X) calculatePvalue(X, "chr22") ) )
+Real.Data[Real.Data=="chrX",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chrX",]$Count, function(X) calculatePvalue(X, "chrX") ) )
+Real.Data[Real.Data=="chrY",]$Pvalue<-unlist( lapply(Real.Data[Real.Data=="chrY",]$Count, function(X) calculatePvalue(X, "chrY") ) )
+
+# make sure numeric
+Real.Data$Pvalue[Real.Data$Pvalue=="NA"]<-NA
+Real.Data$Pvalue<-as.numeric(Real.Data$Pvalue)
+```
+
+```{r Generate null of p-values for multiple tests correction, include=FALSE}
+SampledNull<-Shuffled.Data[sample(1:nrow(Shuffled.Data), nrow(Real.Data)*10),]
+
+SampledNull$Pvalue<-"NA"
+SampledNull[SampledNull=="chr1",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr1",]$Count, function(X) calculatePvalue(X, "chr1") ) )
+SampledNull[SampledNull=="chr2",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr2",]$Count, function(X) calculatePvalue(X, "chr2") ) )
+SampledNull[SampledNull=="chr3",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr3",]$Count, function(X) calculatePvalue(X, "chr3") ) )
+SampledNull[SampledNull=="chr4",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr4",]$Count, function(X) calculatePvalue(X, "chr4") ) )
+SampledNull[SampledNull=="chr5",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr5",]$Count, function(X) calculatePvalue(X, "chr5") ) )
+SampledNull[SampledNull=="chr6",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr6",]$Count, function(X) calculatePvalue(X, "chr6") ) )
+SampledNull[SampledNull=="chr7",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr7",]$Count, function(X) calculatePvalue(X, "chr7") ) )
+SampledNull[SampledNull=="chr8",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr8",]$Count, function(X) calculatePvalue(X, "chr8") ) )
+SampledNull[SampledNull=="chr9",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr9",]$Count, function(X) calculatePvalue(X, "chr9") ) )
+SampledNull[SampledNull=="chr10",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr10",]$Count, function(X) calculatePvalue(X, "chr10") ) )
+SampledNull[SampledNull=="chr11",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr11",]$Count, function(X) calculatePvalue(X, "chr11") ) )
+SampledNull[SampledNull=="chr12",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr12",]$Count, function(X) calculatePvalue(X, "chr12") ) )
+SampledNull[SampledNull=="chr13",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr13",]$Count, function(X) calculatePvalue(X, "chr13") ) )
+SampledNull[SampledNull=="chr14",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr14",]$Count, function(X) calculatePvalue(X, "chr14") ) )
+SampledNull[SampledNull=="chr15",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr15",]$Count, function(X) calculatePvalue(X, "chr15") ) )
+SampledNull[SampledNull=="chr16",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr16",]$Count, function(X) calculatePvalue(X, "chr16") ) )
+SampledNull[SampledNull=="chr17",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr17",]$Count, function(X) calculatePvalue(X, "chr17") ) )
+SampledNull[SampledNull=="chr18",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr18",]$Count, function(X) calculatePvalue(X, "chr18") ) )
+SampledNull[SampledNull=="chr19",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr19",]$Count, function(X) calculatePvalue(X, "chr19") ) )
+SampledNull[SampledNull=="chr20",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr20",]$Count, function(X) calculatePvalue(X, "chr20") ) )
+SampledNull[SampledNull=="chr21",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr21",]$Count, function(X) calculatePvalue(X, "chr21") ) )
+SampledNull[SampledNull=="chr22",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chr22",]$Count, function(X) calculatePvalue(X, "chr22") ) )
+SampledNull[SampledNull=="chrX",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chrX",]$Count, function(X) calculatePvalue(X, "chrX") ) )
+SampledNull[SampledNull=="chrY",]$Pvalue<-unlist( lapply(SampledNull[SampledNull=="chrY",]$Count, function(X) calculatePvalue(X, "chrY") ) )
+
+SampledNull$Pvalue[SampledNull$Pvalue=="NA"]<-NA
+SampledNull$Pvalue<-as.numeric(SampledNull$Pvalue)
+
+# Filter out sex chromosomes!!!
+Real.Data<-subset(Real.Data, !(Chr %in% c("chrX","chrY")) )
+```
+
+```{r Plot p-Value distrutions, include=TRUE}
+ggplot(Real.Data, aes(x=Pvalue) )+
+  geom_histogram(bins = 100)
+```
+
+```{r Multiple tests correction, include=FALSE}
+Real.Data$fdr<-p.adjust(p = Real.Data$Pvalue, method = "fdr")
+```
+
+```{r calculate real count percentiles, include=FALSE}
+# Build ECDF for real count data
+RealECDF.1<-ecdf(x = subset(Real.Data,Chr=="chr1")$Count)
+RealECDF.2<-ecdf(x = subset(Real.Data,Chr=="chr2")$Count)
+RealECDF.3<-ecdf(x = subset(Real.Data,Chr=="chr3")$Count)
+RealECDF.4<-ecdf(x = subset(Real.Data,Chr=="chr4")$Count)
+RealECDF.5<-ecdf(x = subset(Real.Data,Chr=="chr5")$Count)
+RealECDF.6<-ecdf(x = subset(Real.Data,Chr=="chr6")$Count)
+RealECDF.7<-ecdf(x = subset(Real.Data,Chr=="chr7")$Count)
+RealECDF.8<-ecdf(x = subset(Real.Data,Chr=="chr8")$Count)
+RealECDF.9<-ecdf(x = subset(Real.Data,Chr=="chr9")$Count)
+RealECDF.10<-ecdf(x = subset(Real.Data,Chr=="chr10")$Count)
+RealECDF.11<-ecdf(x = subset(Real.Data,Chr=="chr11")$Count)
+RealECDF.12<-ecdf(x = subset(Real.Data,Chr=="chr12")$Count)
+RealECDF.13<-ecdf(x = subset(Real.Data,Chr=="chr13")$Count)
+RealECDF.14<-ecdf(x = subset(Real.Data,Chr=="chr14")$Count)
+RealECDF.15<-ecdf(x = subset(Real.Data,Chr=="chr15")$Count)
+RealECDF.16<-ecdf(x = subset(Real.Data,Chr=="chr16")$Count)
+RealECDF.17<-ecdf(x = subset(Real.Data,Chr=="chr17")$Count)
+RealECDF.18<-ecdf(x = subset(Real.Data,Chr=="chr18")$Count)
+RealECDF.19<-ecdf(x = subset(Real.Data,Chr=="chr19")$Count)
+RealECDF.20<-ecdf(x = subset(Real.Data,Chr=="chr20")$Count)
+RealECDF.21<-ecdf(x = subset(Real.Data,Chr=="chr21")$Count)
+RealECDF.22<-ecdf(x = subset(Real.Data,Chr=="chr22")$Count)
+
+# Using ECDF functions calculate percentile of each count
+Real.Data$Percentile<-"NA"
+Real.Data[Real.Data=="chr1",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr1",]$Count, function(X) RealECDF.1(X) ) )
+Real.Data[Real.Data=="chr2",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr2",]$Count, function(X) RealECDF.2(X) ) )
+Real.Data[Real.Data=="chr3",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr3",]$Count, function(X) RealECDF.3(X) ) )
+Real.Data[Real.Data=="chr4",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr4",]$Count, function(X) RealECDF.4(X) ) )
+Real.Data[Real.Data=="chr5",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr5",]$Count, function(X) RealECDF.5(X) ) )
+Real.Data[Real.Data=="chr6",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr6",]$Count, function(X) RealECDF.6(X) ) )
+Real.Data[Real.Data=="chr7",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr7",]$Count, function(X) RealECDF.7(X) ) )
+Real.Data[Real.Data=="chr8",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr8",]$Count, function(X) RealECDF.8(X) ) )
+Real.Data[Real.Data=="chr9",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr9",]$Count, function(X) RealECDF.9(X) ) )
+Real.Data[Real.Data=="chr10",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr10",]$Count, function(X) RealECDF.10(X) ) )
+Real.Data[Real.Data=="chr11",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr11",]$Count, function(X) RealECDF.11(X) ) )
+Real.Data[Real.Data=="chr12",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr12",]$Count, function(X) RealECDF.12(X) ) )
+Real.Data[Real.Data=="chr13",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr13",]$Count, function(X) RealECDF.13(X) ) )
+Real.Data[Real.Data=="chr14",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr14",]$Count, function(X) RealECDF.14(X) ) )
+Real.Data[Real.Data=="chr15",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr15",]$Count, function(X) RealECDF.15(X) ) )
+Real.Data[Real.Data=="chr16",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr16",]$Count, function(X) RealECDF.16(X) ) )
+Real.Data[Real.Data=="chr17",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr17",]$Count, function(X) RealECDF.17(X) ) )
+Real.Data[Real.Data=="chr18",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr18",]$Count, function(X) RealECDF.18(X) ) )
+Real.Data[Real.Data=="chr19",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr19",]$Count, function(X) RealECDF.19(X) ) )
+Real.Data[Real.Data=="chr20",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr20",]$Count, function(X) RealECDF.20(X) ) )
+Real.Data[Real.Data=="chr21",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr21",]$Count, function(X) RealECDF.21(X) ) )
+Real.Data[Real.Data=="chr22",]$Percentile<- 1-unlist( lapply(Real.Data[Real.Data=="chr22",]$Count, function(X) RealECDF.22(X) ) )
+
+# Make numeric
+Real.Data$Percentile<-as.numeric(Real.Data$Percentile)
+```
+
+```{r plot Percentile vs count, include=TRUE, fig.width=12}
+ggplot(Real.Data, aes(x=Percentile, y=Count) )+
+  geom_point(size=0.1)+
+  facet_wrap(~Chr)+
+  CS.THEME+
+  geom_vline(xintercept = 0.05, linetype = "dashed", color = "red")
+```
+
+```{r Plot null count distribution, include=TRUE, fig.width=12}
+Shuffled.Data<-subset(Shuffled.Data, !(Chr %in% c("chrX","chrY")) )
+Shuffled.Data$Chr<-factor(Shuffled.Data$Chr,unique(Shuffled.Data$Chr),ordered = TRUE)
+Real.Data$Chr<-factor(Real.Data$Chr,unique(Real.Data$Chr),ordered = TRUE)
+PlotThreshold<-min(subset(Real.Data, Percentile<0.0001)$Count)
+
+NullDistPlot<-ggplot(Shuffled.Data,aes(x=Count))+
+  geom_histogram(bins=100)+
+  facet_wrap(~Chr)+
+  CS.THEME+
+  scale_x_continuous(limits = c(-1,PlotThreshold))+
+  scale_y_continuous(trans="log2")
+
+ggsave(filename = "NullDistPlot_Indel_PASS_240kb.png",plot = NullDistPlot,units = "in", width = 12, height = 12)
+
+NullDistPlot
+```
+
+```{r What fraction of regions that pass FDR?}
+nrow(Real.Data)
+thresholdFDR<-0.0005
+nrow(subset(Real.Data, fdr<=thresholdFDR))/nrow(Real.Data)
+```
+
+```{r What fraction of regions that pass FDR and Percentile threshold?}
+thresholdPercentile<-0.1
+nrow(Real.Data)
+nrow(subset(Real.Data, fdr<=thresholdFDR & Percentile<=thresholdPercentile))/nrow(Real.Data)
+```
+
+```{r Plot Real data count distribution, fig.width=12}
+Real.Data$Significant<-Real.Data$fdr<=thresholdFDR & Real.Data$Percentile<=thresholdPercentile
+Real.Data.ThreshedForPlot<-Real.Data
+Real.Data.ThreshedForPlot$Count[Real.Data.ThreshedForPlot$Count>PlotThreshold] <-PlotThreshold
+
+RealDataPlot<-ggplot(Real.Data.ThreshedForPlot,aes(x=Count, fill=Significant))+
+  geom_histogram(bins=100)+
+  facet_wrap(~Chr)+
+  CS.THEME+
+  scale_x_continuous(limits = c(-1,PlotThreshold))+
+  scale_y_continuous(trans = "log2")+
+  scale_fill_viridis_d(begin = 0.9, end = 0.1)+
+  theme(legend.position = "bottom")
+
+ggsave(filename = "RealDataPlot_Indel_PASS_240kb.png",plot = RealDataPlot,units = "in", width = 12, height = 12)
+
+RealDataPlot
+```
+
+```{r Save table of enrichment, include=FALSE}
+write.table(x = Real.Data, file = "240kb_Regions_Enriched_in_Indel_PASS_AllData.txt", quote = FALSE, sep = "\t", col.names = TRUE, row.names = FALSE)
+write.table(x = subset(Real.Data, Significant==TRUE), file = "240kb_Regions_Enriched_in_Indel_PASS_SigOnly.txt", quote = FALSE, sep = "\t", col.names = TRUE, row.names = FALSE)
+```
+
+```{r Generate Manhatten like plots, include=FALSE}
+makeManhattenPlot<-function(Chrome){
+  ggplot(subset(Real.Data, Chr==Chrome), aes(x=Start/1000000,y=Count,color=Significant) )+
+  geom_point(size=1, alpha=0.75, stroke=0)+
+  CS.THEME+
+  facet_wrap(~Chr)+
+  xlab("Postion (Mb)")+
+  scale_color_viridis_d(end = 0.1, begin = 0.9)+
+  geom_smooth(data=subset(Real.Data, Chr==Chrome), method = "gam", se = FALSE, fullrange=TRUE, color="black")
+}
+
+plot_list <- list(
+  makeManhattenPlot("chr1")+theme(legend.position = "none"),
+  makeManhattenPlot("chr2")+theme(legend.position = "none"),
+  makeManhattenPlot("chr3")+theme(legend.position = "none"),
+  makeManhattenPlot("chr4")+theme(legend.position = "none"),
+  makeManhattenPlot("chr5")+theme(legend.position = "none"),
+  makeManhattenPlot("chr6")+theme(legend.position = "none"),
+  makeManhattenPlot("chr7")+theme(legend.position = "none"),
+  makeManhattenPlot("chr8")+theme(legend.position = "none"),
+  makeManhattenPlot("chr9")+theme(legend.position = "none"),
+  makeManhattenPlot("chr10")+theme(legend.position = "none"),
+  makeManhattenPlot("chr11")+theme(legend.position = "none"),
+  makeManhattenPlot("chr12")+theme(legend.position = "none"),
+  makeManhattenPlot("chr13")+theme(legend.position = "none"),
+  makeManhattenPlot("chr14")+theme(legend.position = "none"),
+  makeManhattenPlot("chr15")+theme(legend.position = "none"),
+  makeManhattenPlot("chr16")+theme(legend.position = "none"),
+  makeManhattenPlot("chr17")+theme(legend.position = "none"),
+  makeManhattenPlot("chr18")+theme(legend.position = "none"),
+  makeManhattenPlot("chr19")+theme(legend.position = "none"),
+  makeManhattenPlot("chr20")+theme(legend.position = "none"),
+  makeManhattenPlot("chr21")+theme(legend.position = "none"),
+  makeManhattenPlot("chr22")+theme(legend.position = "none")
+)
+
+ManhattenPanel<-plot_grid(plotlist = plot_list, ncol = 4, nrow = 5)
+ggsave(filename = "240kb_ManhattenLikePlots_Regions_Enriched_in_Indel_PASS.png", plot = ManhattenPanel, units = "in", width = 12, height = 12)
+```
+
+```{r Plot Manhattan, include=TRUE, fig.width=16, fig.height=16}
+ManhattenPanel
+```

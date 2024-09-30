@@ -1,0 +1,931 @@
+---
+title: "Combining and plotting Webgestalt results across variant enrichment classes"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Var_Enriched_Regions_ORA/")
+rm(list = ls())
+set.seed(0)
+
+library(ggplot2)
+require(cowplot)
+library(scales)
+library(gridExtra)
+library(grid)
+library(dplyr)
+library(tidyr)
+library(lsr)
+library(text2vec)
+library(umap)
+
+source("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Misc_Code/CS_Aesthetic.R")
+```
+
+```{r read in ORA results, include=FALSE}
+# HGSVC Hot spots enrichment - NA
+HGSVC_HS_BP <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HGSVC_SV_Enrichment/Webgestalt_Outputs/GO_BioProcess_hotspots/enrichment_results_wg_result1719240059.txt", header = TRUE, sep = "\t")
+HGSVC_HS_CC <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HGSVC_SV_Enrichment/Webgestalt_Outputs/GO_Cell_comp_hotspots/enrichment_results_wg_result1719240124.txt", header = TRUE, sep = "\t")
+HGSVC_HS_MF <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HGSVC_SV_Enrichment/Webgestalt_Outputs/GO_Mol_func_hotspots/enrichment_results_wg_result1719240168.txt", header = TRUE, sep = "\t")
+HGSVC_HS_KEGG<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HGSVC_SV_Enrichment/Webgestalt_Outputs/Pathway_KEGG_hotspots/enrichment_results_wg_result1719240224.txt", header = TRUE, sep = "\t")
+HGSVC_HS_HPO<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HGSVC_SV_Enrichment/Webgestalt_Outputs/Phenotype_Human_Geno_Ont_hotspots/enrichment_results_wg_result1719240916.txt", header = TRUE, sep = "\t")
+HGSVC_HS_HCL<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/HGSVC_SV_Enrichment/Webgestalt_Outputs/Human_cell_land_hotspots/enrichment_results_wg_result1719591676.txt", header = TRUE, sep = "\t")
+
+# SV enrichment - 240kb
+SV_240Kb_BP <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/GO_BP_240Kb_SV.html/enrichment_results_wg_result1719542249.txt", header = TRUE, sep = "\t")
+SV_240Kb_CC <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/GO_CC_240Kb_SV.html/enrichment_results_wg_result1719542252.txt", header = TRUE, sep = "\t")
+SV_240Kb_MF <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/GO_MF_240Kb_SV.html/enrichment_results_wg_result1719542255.txt", header = TRUE, sep = "\t")
+SV_240Kb_KEGG<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/KEGG_240Kb_SV.html/enrichment_results_wg_result1719542260.txt", header = TRUE, sep = "\t")
+SV_240Kb_HPO<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/HPO_240Kb_SV.html/enrichment_results_wg_result1719542269.txt", header = TRUE, sep = "\t")
+SV_240Kb_HCL<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/HCL_240Kb_SV.html/enrichment_results_wg_result1719542277.txt", header = TRUE, sep = "\t")
+
+# SV enrichment - 24kb
+SV_24kb_BP <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/GO_BP_24Kb_SV.html/enrichment_results_wg_result1719542395.txt", header = TRUE, sep = "\t")
+SV_24kb_CC <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/GO_CC_24Kb_SV.html/enrichment_results_wg_result1719542400.txt", header = TRUE, sep = "\t")
+SV_24kb_MF <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/GO_MF_24Kb_SV.html/enrichment_results_wg_result1719542402.txt", header = TRUE, sep = "\t")
+SV_24kb_KEGG<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/KEGG_24Kb_SV.html/enrichment_results_wg_result1719542410.txt", header = TRUE, sep = "\t")
+SV_24kb_HPO<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/HPO_24Kb_SV.html/enrichment_results_wg_result1719542413.txt", header = TRUE, sep = "\t")
+SV_24kb_HCL<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/SV_Enrichment/Webgestalt_Outputs/HCL_24Kb_SV.html/enrichment_results_wg_result1719542418.txt", header = TRUE, sep = "\t")
+
+# SNV enrichment - 240kb - PASS
+SNV_240Kb_BP_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_BP_240Kb_SNP_PASS.html/enrichment_results_wg_result1719537964.txt", header = TRUE, sep = "\t")
+SNV_240Kb_CC_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_CC_240Kb_SNP_PASS.html/enrichment_results_wg_result1719537968.txt", header = TRUE, sep = "\t")
+SNV_240Kb_MF_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_MF_240Kb_SNP_PASS.html/enrichment_results_wg_result1719537973.txt", header = TRUE, sep = "\t")
+SNV_240Kb_KEGG_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/KEGG_240Kb_SNP_PASS.html/enrichment_results_wg_result1719537978.txt", header = TRUE, sep = "\t")
+SNV_240Kb_HPO_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HPO_240Kb_SNP_PASS.html/enrichment_results_wg_result1719537984.txt", header = TRUE, sep = "\t")
+SNV_240Kb_HCL_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HCL_240Kb_SNP_PASS.html/enrichment_results_wg_result1719537992.txt", header = TRUE, sep = "\t")
+
+# SNV enrichment - 24kb - PASS
+SNV_24kb_BP_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_BP_24Kb_SNP_PASS.html/enrichment_results_wg_result1719538453.txt", header = TRUE, sep = "\t")
+SNV_24kb_CC_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_CC_24Kb_SNP_PASS.html/enrichment_results_wg_result1719538455.txt", header = TRUE, sep = "\t")
+SNV_24kb_MF_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_MF_24Kb_SNP_PASS.html/enrichment_results_wg_result1719538459.txt", header = TRUE, sep = "\t")
+SNV_24kb_KEGG_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/KEGG_24Kb_SNP_PASS.html/enrichment_results_wg_result1719538464.txt", header = TRUE, sep = "\t")
+SNV_24kb_HPO_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HPO_24Kb_SNP_PASS.html/enrichment_results_wg_result1719538469.txt", header = TRUE, sep = "\t")
+SNV_24kb_HCL_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HCL_24Kb_SNP_PASS.html/enrichment_results_wg_result1719538474.txt", header = TRUE, sep = "\t")
+
+# SNV enrichment - 240kb - RefCall
+SNV_240Kb_BP_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_BP_240Kb_SNP_RefCall.html/enrichment_results_wg_result1719538201.txt", header = TRUE, sep = "\t")
+SNV_240Kb_CC_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_CC_240Kb_SNP_RefCall.html/enrichment_results_wg_result1719538205.txt", header = TRUE, sep = "\t")
+SNV_240Kb_MF_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_MF_240Kb_SNP_RefCall.html/enrichment_results_wg_result1719538209.txt", header = TRUE, sep = "\t")
+SNV_240Kb_KEGG_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/KEGG_240Kb_SNP_RefCall.html/enrichment_results_wg_result1719538228.txt", header = TRUE, sep = "\t")
+SNV_240Kb_HPO_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HPO_240Kb_SNP_RefCall.html/enrichment_results_wg_result1719538235.txt", header = TRUE, sep = "\t")
+SNV_240Kb_HCL_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HCL_240Kb_SNP_RefCall.html/enrichment_results_wg_result1719538239.txt", header = TRUE, sep = "\t")
+
+# SNV enrichment - 24kb - RefCall
+SNV_24kb_BP_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_BP_24Kb_SNP_RefCall.html/enrichment_results_wg_result1719538615.txt", header = TRUE, sep = "\t")
+SNV_24kb_CC_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_CC_24Kb_SNP_RefCall.html/enrichment_results_wg_result1719538618.txt", header = TRUE, sep = "\t")
+SNV_24kb_MF_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_MF_24Kb_SNP_RefCall.html/enrichment_results_wg_result1719538622.txt", header = TRUE, sep = "\t")
+SNV_24kb_KEGG_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/KEGG_24Kb_SNP_RefCall.html/enrichment_results_wg_result1719538626.txt", header = TRUE, sep = "\t")
+SNV_24kb_HPO_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HPO_24Kb_SNP_RefCall.html/enrichment_results_wg_result1719538631.txt", header = TRUE, sep = "\t")
+SNV_24kb_HCL_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HCL_24Kb_SNP_RefCall.html/enrichment_results_wg_result1719538637.txt", header = TRUE, sep = "\t")
+
+# Indel enrichment - 240kb - PASS
+Indel_240Kb_BP_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_BP_240Kb_Indel_PASS.html/enrichment_results_wg_result1719470130.txt", header = TRUE, sep = "\t")
+Indel_240Kb_CC_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_CC_240Kb_Indel_PASS.html/enrichment_results_wg_result1719470427.txt", header = TRUE, sep = "\t")
+Indel_240Kb_MF_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_MF_240Kb_Indel_PASS.html/enrichment_results_wg_result1719470542.txt", header = TRUE, sep = "\t")
+Indel_240Kb_KEGG_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/KEGG_240Kb_Indel_PASS.html/enrichment_results_wg_result1719470439.txt", header = TRUE, sep = "\t")
+Indel_240Kb_HPO_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HPO_240Kb_Indel_PASS.html/enrichment_results_wg_result1719470448.txt", header = TRUE, sep = "\t")
+Indel_240Kb_HCL_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HCL_240Kb_Indel_PASS.html/enrichment_results_wg_result1719470456.txt", header = TRUE, sep = "\t")
+
+# Indel enrichment - 24kb - PASS
+Indel_24kb_BP_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_BP_24Kb_Indel_PASS.html/enrichment_results_wg_result1719470938.txt", header = TRUE, sep = "\t")
+Indel_24kb_CC_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_CC_24Kb_Indel_PASS.html/enrichment_results_wg_result1719470942.txt", header = TRUE, sep = "\t")
+Indel_24kb_MF_PASS <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_MF_24Kb_Indel_PASS.html/enrichment_results_wg_result1719470947.txt", header = TRUE, sep = "\t")
+Indel_24kb_KEGG_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/KEGG_24Kb_Indel_PASS.html/enrichment_results_wg_result1719470956.txt", header = TRUE, sep = "\t")
+Indel_24kb_HPO_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HPO_24Kb_Indel_PASS.html/enrichment_results_wg_result1719470962.txt", header = TRUE, sep = "\t")
+Indel_24kb_HCL_PASS<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HCL_24Kb_Indel_PASS.html/enrichment_results_wg_result1719470968.txt", header = TRUE, sep = "\t")
+
+# Indel enrichment - 240kb - RefCall
+Indel_240Kb_BP_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_BP_240Kb_Indel_RefCall.html/enrichment_results_wg_result1719470687.txt", header = TRUE, sep = "\t")
+Indel_240Kb_CC_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_CC_240Kb_Indel_RefCall.html/enrichment_results_wg_result1719470692.txt", header = TRUE, sep = "\t")
+Indel_240Kb_MF_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_MF_240Kb_Indel_RefCall.html/enrichment_results_wg_result1719470697.txt", header = TRUE, sep = "\t")
+Indel_240Kb_KEGG_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/KEGG_240Kb_Indel_RefCall.html/enrichment_results_wg_result1719470710.txt", header = TRUE, sep = "\t")
+Indel_240Kb_HPO_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HPO_240Kb_Indel_RefCall.html/enrichment_results_wg_result1719470718.txt", header = TRUE, sep = "\t")
+Indel_240Kb_HCL_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HCL_240Kb_Indel_RefCall.html/enrichment_results_wg_result1719470730.txt", header = TRUE, sep = "\t")
+
+# Indel enrichment - 24kb - RefCall
+Indel_24kb_BP_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_BP_24Kb_Indel_RefCall.html/enrichment_results_wg_result1719471198.txt", header = TRUE, sep = "\t")
+Indel_24kb_CC_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_CC_24Kb_Indel_RefCall.html/enrichment_results_wg_result1719471200.txt", header = TRUE, sep = "\t")
+Indel_24kb_MF_RefCall <- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/GO_MF_24Kb_Indel_RefCall.html/enrichment_results_wg_result1719471204.txt", header = TRUE, sep = "\t")
+Indel_24kb_KEGG_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/KEGG_24Kb_Indel_RefCall.html/enrichment_results_wg_result1719471210.txt", header = TRUE, sep = "\t")
+Indel_24kb_HPO_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HPO_24Kb_Indel_RefCall.html/enrichment_results_wg_result1719471215.txt", header = TRUE, sep = "\t")
+Indel_24kb_HCL_RefCall<- read.table("/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/DV_Enrichment/Webgestalt_Outputs/HCL_24Kb_Indel_RefCall.html/enrichment_results_wg_result1719471244.txt", header = TRUE, sep = "\t")
+```
+
+```{r combine ORA results, include=FALSE}
+# add columns with the Variant type {SV, SNV, Indel, Hotspot}, the region size {24Kb, 240Kb, NA}, and the call type {NA, PASS, RefCall}
+SV_240Kb_BP$Variant <- "SV"
+SV_240Kb_BP$Region <- "240Kb"
+SV_240Kb_BP$Call <- " "
+SV_240Kb_BP$Class<- "BP"
+
+SV_240Kb_CC$Variant <- "SV"
+SV_240Kb_CC$Region <- "240Kb"
+SV_240Kb_CC$Call <- " "
+SV_240Kb_CC$Class<- "CC"
+
+SV_240Kb_MF$Variant <- "SV"
+SV_240Kb_MF$Region <- "240Kb"
+SV_240Kb_MF$Call <- " "
+SV_240Kb_MF$Class<- "MF"
+
+SV_240Kb_KEGG$Variant <- "SV"
+SV_240Kb_KEGG$Region <- "240Kb"
+SV_240Kb_KEGG$Call <- " "
+SV_240Kb_KEGG$Class<- "KEGG"
+
+SV_240Kb_HPO$Variant <- "SV"
+SV_240Kb_HPO$Region <- "240Kb"
+SV_240Kb_HPO$Call <- " "
+SV_240Kb_HPO$Class<- "HPO"
+
+SV_240Kb_HCL$Variant <- "SV"
+SV_240Kb_HCL$Region <- "240Kb"
+SV_240Kb_HCL$Call <- " "
+SV_240Kb_HCL$Class<- "HCL"
+
+SV_24kb_BP$Variant <- "SV"
+SV_24kb_BP$Region <- "24Kb"
+SV_24kb_BP$Call <- " "
+SV_24kb_BP$Class<- "BP"
+
+SV_24kb_CC$Variant <- "SV"
+SV_24kb_CC$Region <- "24Kb"
+SV_24kb_CC$Call <- " "
+SV_24kb_CC$Class<- "CC"
+
+SV_24kb_MF$Variant <- "SV"
+SV_24kb_MF$Region <- "24Kb"
+SV_24kb_MF$Call <- " "
+SV_24kb_MF$Class<- "MF"
+
+SV_24kb_KEGG$Variant <- "SV"
+SV_24kb_KEGG$Region <- "24Kb"
+SV_24kb_KEGG$Call <- " "
+SV_24kb_KEGG$Class<- "KEGG"
+
+SV_24kb_HPO$Variant <- "SV"
+SV_24kb_HPO$Region <- "24Kb"
+SV_24kb_HPO$Call <- " "
+SV_24kb_HPO$Class<- "HPO"
+
+SV_24kb_HCL$Variant <- "SV"
+SV_24kb_HCL$Region <- "24Kb"
+SV_24kb_HCL$Call <- " "
+SV_24kb_HCL$Class<- "HCL"
+
+SNV_240Kb_BP_PASS$Variant <- "SNV"
+SNV_240Kb_BP_PASS$Region <- "240Kb"
+SNV_240Kb_BP_PASS$Call <- "PASS"
+SNV_240Kb_BP_PASS$Class<- "BP"
+
+SNV_240Kb_CC_PASS$Variant <- "SNV"
+SNV_240Kb_CC_PASS$Region <- "240Kb"
+SNV_240Kb_CC_PASS$Call <- "PASS"
+SNV_240Kb_CC_PASS$Class<- "CC"
+
+SNV_240Kb_MF_PASS$Variant <- "SNV"
+SNV_240Kb_MF_PASS$Region <- "240Kb"
+SNV_240Kb_MF_PASS$Call <- "PASS"
+SNV_240Kb_MF_PASS$Class<- "MF"
+
+SNV_240Kb_KEGG_PASS$Variant <- "SNV"
+SNV_240Kb_KEGG_PASS$Region <- "240Kb"
+SNV_240Kb_KEGG_PASS$Call <- "PASS"
+SNV_240Kb_KEGG_PASS$Class<- "KEGG"
+
+SNV_240Kb_HPO_PASS$Variant <- "SNV"
+SNV_240Kb_HPO_PASS$Region <- "240Kb"
+SNV_240Kb_HPO_PASS$Call <- "PASS"
+SNV_240Kb_HPO_PASS$Class<- "HPO"
+
+SNV_240Kb_HCL_PASS$Variant <- "SNV"
+SNV_240Kb_HCL_PASS$Region <- "240Kb"
+SNV_240Kb_HCL_PASS$Call <- "PASS"
+SNV_240Kb_HCL_PASS$Class<- "HCL"
+
+SNV_24kb_BP_PASS$Variant <- "SNV"
+SNV_24kb_BP_PASS$Region <- "24Kb"
+SNV_24kb_BP_PASS$Call <- "PASS"
+SNV_24kb_BP_PASS$Class<- "BP"
+
+SNV_24kb_CC_PASS$Variant <- "SNV"
+SNV_24kb_CC_PASS$Region <- "24Kb"
+SNV_24kb_CC_PASS$Call <- "PASS"
+SNV_24kb_CC_PASS$Class<- "CC"
+
+SNV_24kb_MF_PASS$Variant <- "SNV"
+SNV_24kb_MF_PASS$Region <- "24Kb"
+SNV_24kb_MF_PASS$Call <- "PASS"
+SNV_24kb_MF_PASS$Class<- "MF"
+
+SNV_24kb_KEGG_PASS$Variant <- "SNV"
+SNV_24kb_KEGG_PASS$Region <- "24Kb"
+SNV_24kb_KEGG_PASS$Call <- "PASS"
+SNV_24kb_KEGG_PASS$Class<- "KEGG"
+
+SNV_24kb_HPO_PASS$Variant <- "SNV"
+SNV_24kb_HPO_PASS$Region <- "24Kb"
+SNV_24kb_HPO_PASS$Call <- "PASS"
+SNV_24kb_HPO_PASS$Class<- "HPO"
+
+SNV_24kb_HCL_PASS$Variant <- "SNV"
+SNV_24kb_HCL_PASS$Region <- "24Kb"
+SNV_24kb_HCL_PASS$Call <- "PASS"
+SNV_24kb_HCL_PASS$Class<- "HCL"
+
+SNV_240Kb_BP_RefCall$Variant <- "SNV"
+SNV_240Kb_BP_RefCall$Region <- "240Kb"
+SNV_240Kb_BP_RefCall$Call <- "RefCall"
+SNV_240Kb_BP_RefCall$Class<- "BP"
+
+SNV_240Kb_CC_RefCall$Variant <- "SNV"
+SNV_240Kb_CC_RefCall$Region <- "240Kb"
+SNV_240Kb_CC_RefCall$Call <- "RefCall"
+SNV_240Kb_CC_RefCall$Class<- "CC"
+
+SNV_240Kb_MF_RefCall$Variant <- "SNV"
+SNV_240Kb_MF_RefCall$Region <- "240Kb"
+SNV_240Kb_MF_RefCall$Call <- "RefCall"
+SNV_240Kb_MF_RefCall$Class<- "MF"
+
+SNV_240Kb_KEGG_RefCall$Variant <- "SNV"
+SNV_240Kb_KEGG_RefCall$Region <- "240Kb"
+SNV_240Kb_KEGG_RefCall$Call <- "RefCall"
+SNV_240Kb_KEGG_RefCall$Class<- "KEGG"
+
+SNV_240Kb_HPO_RefCall$Variant <- "SNV"
+SNV_240Kb_HPO_RefCall$Region <- "240Kb"
+SNV_240Kb_HPO_RefCall$Call <- "RefCall"
+SNV_240Kb_HPO_RefCall$Class<- "HPO"
+
+SNV_240Kb_HCL_RefCall$Variant <- "SNV"
+SNV_240Kb_HCL_RefCall$Region <- "240Kb"
+SNV_240Kb_HCL_RefCall$Call <- "RefCall"
+SNV_240Kb_HCL_RefCall$Class<- "HCL"
+
+SNV_24kb_BP_RefCall$Variant <- "SNV"
+SNV_24kb_BP_RefCall$Region <- "24Kb"
+SNV_24kb_BP_RefCall$Call <- "RefCall"
+SNV_24kb_BP_RefCall$Class<- "BP"
+
+SNV_24kb_CC_RefCall$Variant <- "SNV"
+SNV_24kb_CC_RefCall$Region <- "24Kb"
+SNV_24kb_CC_RefCall$Call <- "RefCall"
+SNV_24kb_CC_RefCall$Class<- "CC"
+
+SNV_24kb_MF_RefCall$Variant <- "SNV"
+SNV_24kb_MF_RefCall$Region <- "24Kb"
+SNV_24kb_MF_RefCall$Call <- "RefCall"
+SNV_24kb_MF_RefCall$Class<- "MF"
+
+SNV_24kb_KEGG_RefCall$Variant <- "SNV"
+SNV_24kb_KEGG_RefCall$Region <- "24Kb"
+SNV_24kb_KEGG_RefCall$Call <- "RefCall"
+SNV_24kb_KEGG_RefCall$Class<- "KEGG"
+
+SNV_24kb_HPO_RefCall$Variant <- "SNV"
+SNV_24kb_HPO_RefCall$Region <- "24Kb"
+SNV_24kb_HPO_RefCall$Call <- "RefCall"
+SNV_24kb_HPO_RefCall$Class<- "HPO"
+
+SNV_24kb_HCL_RefCall$Variant <- "SNV"
+SNV_24kb_HCL_RefCall$Region <- "24Kb"
+SNV_24kb_HCL_RefCall$Call <- "RefCall"
+SNV_24kb_HCL_RefCall$Class<- "HCL"
+
+Indel_240Kb_BP_PASS$Variant <- "Indel"
+Indel_240Kb_BP_PASS$Region <- "240Kb"
+Indel_240Kb_BP_PASS$Call <- "PASS"
+Indel_240Kb_BP_PASS$Class<- "BP"
+
+Indel_240Kb_CC_PASS$Variant <- "Indel"
+Indel_240Kb_CC_PASS$Region <- "240Kb"
+Indel_240Kb_CC_PASS$Call <- "PASS"
+Indel_240Kb_CC_PASS$Class<- "CC"
+
+Indel_240Kb_MF_PASS$Variant <- "Indel"
+Indel_240Kb_MF_PASS$Region <- "240Kb"
+Indel_240Kb_MF_PASS$Call <- "PASS"
+Indel_240Kb_MF_PASS$Class<- "MF"
+
+Indel_240Kb_KEGG_PASS$Variant <- "Indel"
+Indel_240Kb_KEGG_PASS$Region <- "240Kb"
+Indel_240Kb_KEGG_PASS$Call <- "PASS"
+Indel_240Kb_KEGG_PASS$Class<- "KEGG"
+
+Indel_240Kb_HPO_PASS$Variant <- "Indel"
+Indel_240Kb_HPO_PASS$Region <- "240Kb"
+Indel_240Kb_HPO_PASS$Call <- "PASS"
+Indel_240Kb_HPO_PASS$Class<- "HPO"
+
+Indel_240Kb_HCL_PASS$Variant <- "Indel"
+Indel_240Kb_HCL_PASS$Region <- "240Kb"
+Indel_240Kb_HCL_PASS$Call <- "PASS"
+Indel_240Kb_HCL_PASS$Class<- "HCL"
+
+Indel_24kb_BP_PASS$Variant <- "Indel"
+Indel_24kb_BP_PASS$Region <- "24Kb"
+Indel_24kb_BP_PASS$Call <- "PASS"
+Indel_24kb_BP_PASS$Class<- "BP"
+
+Indel_24kb_CC_PASS$Variant <- "Indel"
+Indel_24kb_CC_PASS$Region <- "24Kb"
+Indel_24kb_CC_PASS$Call <- "PASS"
+Indel_24kb_CC_PASS$Class<- "CC"
+
+Indel_24kb_MF_PASS$Variant <- "Indel"
+Indel_24kb_MF_PASS$Region <- "24Kb"
+Indel_24kb_MF_PASS$Call <- "PASS"
+Indel_24kb_MF_PASS$Class<- "MF"
+
+Indel_24kb_KEGG_PASS$Variant <- "Indel"
+Indel_24kb_KEGG_PASS$Region <- "24Kb"
+Indel_24kb_KEGG_PASS$Call <- "PASS"
+Indel_24kb_KEGG_PASS$Class<- "KEGG"
+
+Indel_24kb_HPO_PASS$Variant <- "Indel"
+Indel_24kb_HPO_PASS$Region <- "24Kb"
+Indel_24kb_HPO_PASS$Call <- "PASS"
+Indel_24kb_HPO_PASS$Class<- "HPO"
+
+Indel_24kb_HCL_PASS$Variant <- "Indel"
+Indel_24kb_HCL_PASS$Region <- "24Kb"
+Indel_24kb_HCL_PASS$Call <- "PASS"
+Indel_24kb_HCL_PASS$Class<- "HCL"
+
+Indel_240Kb_BP_RefCall$Variant <- "Indel"
+Indel_240Kb_BP_RefCall$Region <- "240Kb"
+Indel_240Kb_BP_RefCall$Call <- "RefCall"
+Indel_240Kb_BP_RefCall$Class<- "BP"
+
+Indel_240Kb_CC_RefCall$Variant <- "Indel"
+Indel_240Kb_CC_RefCall$Region <- "240Kb"
+Indel_240Kb_CC_RefCall$Call <- "RefCall"
+Indel_240Kb_CC_RefCall$Class<- "CC"
+
+Indel_240Kb_MF_RefCall$Variant <- "Indel"
+Indel_240Kb_MF_RefCall$Region <- "240Kb"
+Indel_240Kb_MF_RefCall$Call <- "RefCall"
+Indel_240Kb_MF_RefCall$Class<- "MF"
+
+Indel_240Kb_KEGG_RefCall$Variant <- "Indel"
+Indel_240Kb_KEGG_RefCall$Region <- "240Kb"
+Indel_240Kb_KEGG_RefCall$Call <- "RefCall"
+Indel_240Kb_KEGG_RefCall$Class<- "KEGG"
+
+Indel_240Kb_HPO_RefCall$Variant <- "Indel"
+Indel_240Kb_HPO_RefCall$Region <- "240Kb"
+Indel_240Kb_HPO_RefCall$Call <- "RefCall"
+Indel_240Kb_HPO_RefCall$Class<- "HPO"
+
+Indel_240Kb_HCL_RefCall$Variant <- "Indel"
+Indel_240Kb_HCL_RefCall$Region <- "240Kb"
+Indel_240Kb_HCL_RefCall$Call <- "RefCall"
+Indel_240Kb_HCL_RefCall$Class<- "HCL"
+
+Indel_24kb_BP_RefCall$Variant <- "Indel"
+Indel_24kb_BP_RefCall$Region <- "24Kb"
+Indel_24kb_BP_RefCall$Call <- "RefCall"
+Indel_24kb_BP_RefCall$Class<- "BP"
+
+Indel_24kb_CC_RefCall$Variant <- "Indel"
+Indel_24kb_CC_RefCall$Region <- "24Kb"
+Indel_24kb_CC_RefCall$Call <- "RefCall"
+Indel_24kb_CC_RefCall$Class<- "CC"
+
+Indel_24kb_MF_RefCall$Variant <- "Indel"
+Indel_24kb_MF_RefCall$Region <- "24Kb"
+Indel_24kb_MF_RefCall$Call <- "RefCall"
+Indel_24kb_MF_RefCall$Class<- "MF"
+
+Indel_24kb_KEGG_RefCall$Variant <- "Indel"
+Indel_24kb_KEGG_RefCall$Region <- "24Kb"
+Indel_24kb_KEGG_RefCall$Call <- "RefCall"
+Indel_24kb_KEGG_RefCall$Class<- "KEGG"
+
+Indel_24kb_HPO_RefCall$Variant <- "Indel"
+Indel_24kb_HPO_RefCall$Region <- "24Kb"
+Indel_24kb_HPO_RefCall$Call <- "RefCall"
+Indel_24kb_HPO_RefCall$Class<- "HPO"
+
+Indel_24kb_HCL_RefCall$Variant <- "Indel"
+Indel_24kb_HCL_RefCall$Region <- "24Kb"
+Indel_24kb_HCL_RefCall$Call <- "RefCall"
+Indel_24kb_HCL_RefCall$Class<- "HCL"
+
+HGSVC_HS_BP$Variant <- "HGSVC"
+HGSVC_HS_BP$Region <- "Hotspot"
+HGSVC_HS_BP$Call <- " "
+HGSVC_HS_BP$Class<- "BP"
+
+HGSVC_HS_CC$Variant <- "HGSVC"
+HGSVC_HS_CC$Region <- "Hotspot"
+HGSVC_HS_CC$Call <- " "
+HGSVC_HS_CC$Class<- "CC"
+
+HGSVC_HS_MF$Variant <- "HGSVC"
+HGSVC_HS_MF$Region <- "Hotspot"
+HGSVC_HS_MF$Call <- " "
+HGSVC_HS_MF$Class<- "MF"
+
+HGSVC_HS_KEGG$Variant <- "HGSVC"
+HGSVC_HS_KEGG$Region <- "Hotspot"
+HGSVC_HS_KEGG$Call <- " "
+HGSVC_HS_KEGG$Class<- "KEGG"
+
+HGSVC_HS_HPO$Variant <- "HGSVC"
+HGSVC_HS_HPO$Region <- "Hotspot"
+HGSVC_HS_HPO$Call <- " "
+HGSVC_HS_HPO$Class<- "HPO"
+
+HGSVC_HS_HCL$Variant <- "HGSVC"
+HGSVC_HS_HCL$Region <- "Hotspot"
+HGSVC_HS_HCL$Call <- " "
+HGSVC_HS_HCL$Class<- "HCL"
+
+# Combine all ORA results
+Combined_ORA_GO_KEGG_HPO<- rbind(
+  HGSVC_HS_BP,
+  HGSVC_HS_CC,
+  HGSVC_HS_MF,
+  HGSVC_HS_KEGG,
+  HGSVC_HS_HPO,
+  SV_240Kb_BP,
+  SV_240Kb_CC,
+  SV_240Kb_MF,
+  SV_240Kb_KEGG,
+  SV_240Kb_HPO,
+  SV_24kb_BP,
+  SV_24kb_CC,
+  SV_24kb_MF,
+  SV_24kb_KEGG,
+  SV_24kb_HPO,
+  SNV_240Kb_BP_PASS,
+  SNV_240Kb_CC_PASS,
+  SNV_240Kb_MF_PASS,
+  SNV_240Kb_KEGG_PASS,
+  SNV_240Kb_HPO_PASS,
+  SNV_24kb_BP_PASS,
+  SNV_24kb_CC_PASS,
+  SNV_24kb_MF_PASS,
+  SNV_24kb_KEGG_PASS,
+  SNV_24kb_HPO_PASS,
+  SNV_240Kb_BP_RefCall,
+  SNV_240Kb_CC_RefCall,
+  SNV_240Kb_MF_RefCall,
+  SNV_240Kb_KEGG_RefCall,
+  SNV_240Kb_HPO_RefCall,
+  SNV_24kb_BP_RefCall,
+  SNV_24kb_CC_RefCall,
+  SNV_24kb_MF_RefCall,
+  SNV_24kb_KEGG_RefCall,
+  SNV_24kb_HPO_RefCall,
+  Indel_240Kb_BP_PASS,
+  Indel_240Kb_CC_PASS,
+  Indel_240Kb_MF_PASS,
+  Indel_240Kb_KEGG_PASS,
+  Indel_240Kb_HPO_PASS,
+  Indel_24kb_BP_PASS,
+  Indel_24kb_CC_PASS,
+  Indel_24kb_MF_PASS,
+  Indel_24kb_KEGG_PASS,
+  Indel_24kb_HPO_PASS,
+  Indel_240Kb_BP_RefCall,
+  Indel_240Kb_CC_RefCall,
+  Indel_240Kb_MF_RefCall,
+  Indel_240Kb_KEGG_RefCall,
+  Indel_240Kb_HPO_RefCall,
+  Indel_24kb_BP_RefCall,
+  Indel_24kb_CC_RefCall,
+  Indel_24kb_MF_RefCall,
+  Indel_24kb_KEGG_RefCall,
+  Indel_24kb_HPO_RefCall
+)
+
+Combined_ORA_HCL<- rbind(
+  HGSVC_HS_HCL,
+  SV_240Kb_HCL,
+  SV_24kb_HCL,
+  SNV_240Kb_HCL_PASS,
+  SNV_24kb_HCL_PASS,
+  SNV_240Kb_HCL_RefCall,
+  SNV_24kb_HCL_RefCall,
+  Indel_240Kb_HCL_PASS,
+  Indel_24kb_HCL_PASS,
+  Indel_240Kb_HCL_RefCall,
+  Indel_24kb_HCL_RefCall
+)
+
+```
+
+```{r addline_format, include=FALSE}
+addline_format <- function(X, wordLen=8, splitStart=8, splitEnd=9){
+  
+  if (length(strsplit(x = X,split = " ")[[1]])>wordLen){
+    key<-paste(c(strsplit(x = X,split = " ")[[1]][splitStart:splitEnd]),collapse = " ")
+    replacement<-paste( c(strsplit(x = X,split = " ")[[1]][splitStart],"\n",strsplit(x = X,split = " ")[[1]][splitEnd]),collapse = "")
+    
+    gsub(key,replacement,X)
+  } else {
+    X
+  }
+  
+}
+
+```
+
+
+```{r save ORA results, include=FALSE}
+write.table(Combined_ORA_GO_KEGG_HPO, file = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Var_Enriched_Regions_ORA/Combined_ORA_GO_KEGG_HPO.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(Combined_ORA_HCL, file = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/Var_Enriched_Regions_ORA/Combined_ORA_HCL.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+```{r order HCL data, include=FALSE}
+# Add line breaks to descriptions
+Combined_ORA_HCL$geneSet <- unlist(lapply(Combined_ORA_HCL$geneSet, function(X) addline_format(X)))
+
+##### Spot fix names
+Combined_ORA_HCL$geneSet[Combined_ORA_HCL$geneSet=="Antigen presenting cell ((RPS\nhigh))"]<-"Antigen presenting cell\n (RPS high)"
+Combined_ORA_HCL$geneSet[Combined_ORA_HCL$geneSet=="Erythroid progenitor cell ((RP\nhigh))"]<-"Erythroid progenitor cell\n (RP high)"
+
+# Step 1: Combine UserIDs and replace ; with space
+UserIDs_HCL<-unlist(lapply(Combined_ORA_HCL$userId, function(X) paste(strsplit(X, split = ";")[[1]],collapse = " ")))
+
+# Step 2: Tokenize the UserIDs
+tokens <- word_tokenizer(tolower(UserIDs_HCL))
+it <- itoken(tokens)
+
+# Step 3: Create Vocabulary and Vectorizer
+vocab <- create_vocabulary(it) %>%
+  prune_vocabulary(term_count_min = 1)  # Adjust term_count_min as needed
+vectorizer <- vocab_vectorizer(vocab)
+
+# Step 4: Create the Term Co-occurrence Matrix (TCM)
+tcm <- create_tcm(it, vectorizer, skip_grams_window = 5)
+
+# Step 5: Train the GlobalVectors Model
+wv_model <- GlobalVectors$new(rank = 32, x_max = 10)
+wv_model$fit_transform(tcm, n_iter = 20, convergence_tol = 0.01, shuffle = TRUE)
+
+# Step 6: Access and Use Word Vectors
+word_vectors <- wv_model$components
+
+# Define a function to generate a term vector
+makeTermVector<-function(USERIDS){
+  TermIndexes<-match(tolower(strsplit(USERIDS, " ")[[1]]), vocab$term)
+  rowSums(word_vectors[, TermIndexes , drop = FALSE])
+}
+
+# Step 7: Generate vectors for each user ID
+UserIDs_HCL.Vectors<-lapply(UserIDs_HCL, function(X) makeTermVector(X) ) %>% bind_cols() %>% as.data.frame()
+colnames(UserIDs_HCL.Vectors)<-Combined_ORA_HCL$geneSet
+
+# Step 8: 
+UserIDs_HCL.Vectors.merged<-NULL
+for (ID in unique(colnames(UserIDs_HCL.Vectors)) ){
+  # If has one, just keep it, if not take the average
+  if(sum(colnames(UserIDs_HCL.Vectors) %in% ID) == 1){
+    UserIDs_HCL.Vectors.merged<-cbind(UserIDs_HCL.Vectors.merged, UserIDs_HCL.Vectors[,colnames(UserIDs_HCL.Vectors) %in% ID])
+  }else{
+    UserIDs_HCL.Vectors.merged<-cbind(UserIDs_HCL.Vectors.merged,apply(UserIDs_HCL.Vectors[,colnames(UserIDs_HCL.Vectors) %in% ID], 1, mean))
+  }
+}
+
+colnames(UserIDs_HCL.Vectors.merged)<-unique(colnames(UserIDs_HCL.Vectors))
+
+# Step 9: Visualize the Vectors
+# Generate UMAP
+UserIDs_HCL.umap<-umap(t(UserIDs_HCL.Vectors.merged))
+
+# Create a data frame for ggplot
+umap_df <- as.data.frame(UserIDs_HCL.umap$layout)
+umap_df$geneSet <- colnames(UserIDs_HCL.Vectors.merged)
+
+# with small label for the gene set
+umap_plot<-ggplot(umap_df, aes(x = V1, y = V2)) +
+  geom_point() +
+  geom_text(aes(label = geneSet), size = 2, nudge_y = 0.1) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(title = "UMAP of HCL gene sets")
+
+UserIDs_HCL.Vectors.merged.hclust<-hclust(dist(t(as.matrix(UserIDs_HCL.Vectors.merged))))
+HCL.order<-UserIDs_HCL.Vectors.merged.hclust$labels[UserIDs_HCL.Vectors.merged.hclust$order]
+```
+```{r plot HCL umap, include=TRUE}
+umap_plot
+```
+
+```{r order GO KEGG HPO data, include=FALSE}
+# Add line breaks to descriptions
+Combined_ORA_GO_KEGG_HPO$description <- unlist(lapply(Combined_ORA_GO_KEGG_HPO$description, function(X) addline_format(X)))
+
+# Step 1: Combine UserIDs and replace ; with space
+UserIDs_ProcessTerms<-unlist(lapply(Combined_ORA_GO_KEGG_HPO$userId, function(X) paste(strsplit(X, split = ";")[[1]],collapse = " ")))
+
+# Step 2: Tokenize the UserIDs
+tokens <- word_tokenizer(tolower(UserIDs_ProcessTerms))
+it <- itoken(tokens)
+
+# Step 3: Create Vocabulary and Vectorizer
+vocab <- create_vocabulary(it) %>%
+  prune_vocabulary(term_count_min = 1)  # Adjust term_count_min as needed
+vectorizer <- vocab_vectorizer(vocab)
+
+# Step 4: Create the Term Co-occurrence Matrix (TCM)
+tcm <- create_tcm(it, vectorizer, skip_grams_window = 5)
+
+# Step 5: Train the GlobalVectors Model
+wv_model <- GlobalVectors$new(rank = 32, x_max = 10)
+wv_model$fit_transform(tcm, n_iter = 20, convergence_tol = 0.01, shuffle = TRUE)
+
+# Step 6: Access and Use Word Vectors
+word_vectors <- wv_model$components
+
+# Step 7: Generate vectors for each user ID
+UserIDs_ProcessTerms.Vectors<-lapply(UserIDs_ProcessTerms, function(X) makeTermVector(X) ) %>% bind_cols() %>% as.data.frame()
+colnames(UserIDs_ProcessTerms.Vectors)<-Combined_ORA_GO_KEGG_HPO$geneSet
+
+# Step 8: 
+UserIDs_ProcessTerms.Vectors.merged<-NULL
+for (ID in unique(colnames(UserIDs_ProcessTerms.Vectors)) ){
+  # If has one, just keep it, if not take the average
+  if(sum(colnames(UserIDs_ProcessTerms.Vectors) %in% ID) == 1){
+    UserIDs_ProcessTerms.Vectors.merged<-cbind(UserIDs_ProcessTerms.Vectors.merged, UserIDs_ProcessTerms.Vectors[,colnames(UserIDs_ProcessTerms.Vectors) %in% ID])
+  }else{
+    UserIDs_ProcessTerms.Vectors.merged<-cbind(UserIDs_ProcessTerms.Vectors.merged,apply(UserIDs_ProcessTerms.Vectors[,colnames(UserIDs_ProcessTerms.Vectors) %in% ID], 1, mean))
+  }
+}
+
+colnames(UserIDs_ProcessTerms.Vectors.merged)<-unique(colnames(UserIDs_ProcessTerms.Vectors))
+
+# Step 9: Visualize the Vectors
+# Generate UMAP
+UserIDs_ProcessTerms.umap<-umap(t(UserIDs_ProcessTerms.Vectors.merged))
+
+# Create a data frame for ggplot
+umap_df <- as.data.frame(UserIDs_ProcessTerms.umap$layout)
+umap_df$geneSet <- colnames(UserIDs_ProcessTerms.Vectors.merged)
+
+# with small label for the gene set
+umap_plot_ProcesTerms<-ggplot(umap_df, aes(x = V1, y = V2)) +
+  geom_point() +
+  geom_text(aes(label = geneSet), size = 2, nudge_y = 0.1) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(title = "UMAP of GO, KEGG, and HPO gene sets")
+
+UserIDs_ProcessTerms.Vectors.merged.hclust<-hclust(dist(t(as.matrix(UserIDs_ProcessTerms.Vectors.merged))))
+ProcessTerms.order<-UserIDs_ProcessTerms.Vectors.merged.hclust$labels[UserIDs_ProcessTerms.Vectors.merged.hclust$order]
+```
+
+```{r plot GO KEGG HPO umap, include=TRUE}
+umap_plot_ProcesTerms
+```
+
+```{r format data, include=FALSE}
+# Remove unneeded columns
+Combined_ORA_GO_KEGG_HPO<-Combined_ORA_GO_KEGG_HPO[,c(-3,-5,-6,-10,-11)]
+Combined_ORA_HCL<-Combined_ORA_HCL[,c(-2, -4, -5, -9, -10)]
+
+#  Tag by significance
+Combined_ORA_GO_KEGG_HPO$Significance <- ifelse(Combined_ORA_GO_KEGG_HPO$FDR <= 0.05, "FDR<=0.05", "FDR>0.05")
+Combined_ORA_HCL$Significance <- ifelse(Combined_ORA_HCL$FDR <= 0.05, "FDR<=0.05", "FDR>0.05")
+
+# rank by fold enrichment
+Combined_ORA_HCL <- Combined_ORA_HCL[order(Combined_ORA_HCL$enrichmentRatio),]
+
+# round Count data to zero decimals
+Combined_ORA_GO_KEGG_HPO$size <- round(Combined_ORA_GO_KEGG_HPO$size, 0)
+Combined_ORA_HCL$size <- round(Combined_ORA_HCL$size, 0)
+
+### format columns as factors for precise plotting
+#### each description is a unique level
+Combined_ORA_GO_KEGG_HPO$Description <- factor(Combined_ORA_GO_KEGG_HPO$description, levels=unique(Combined_ORA_GO_KEGG_HPO$description))
+
+## reorder the data
+Combined_ORA_HCL$geneSet<-factor(Combined_ORA_HCL$geneSet, levels=HCL.order)
+Combined_ORA_GO_KEGG_HPO$geneSet<-factor(Combined_ORA_GO_KEGG_HPO$geneSet, levels=ProcessTerms.order)
+
+# Make name key by combinging the Variant and Region
+Combined_ORA_GO_KEGG_HPO$Group<-paste(Combined_ORA_GO_KEGG_HPO$Variant,Combined_ORA_GO_KEGG_HPO$Region, Combined_ORA_GO_KEGG_HPO$Call, sep=" - ")
+Combined_ORA_HCL$Group<-paste(Combined_ORA_HCL$Variant,Combined_ORA_HCL$Region, Combined_ORA_HCL$Call, sep=" - ")
+
+Combined_ORA_HCL$Group[Combined_ORA_HCL$Group=="SV - 24Kb -  "]<-"SV - 24Kb"
+Combined_ORA_HCL$Group[Combined_ORA_HCL$Group=="SV - 240Kb -  "]<-"SV - 240Kb"
+Combined_ORA_HCL$Group[Combined_ORA_HCL$Group=="HGSVC - Hotspot -  "]<-"HGSVC - Hotspot"
+
+Combined_ORA_GO_KEGG_HPO$Group[Combined_ORA_GO_KEGG_HPO$Group=="SV - 24Kb -  "]<-"SV - 24Kb"
+Combined_ORA_GO_KEGG_HPO$Group[Combined_ORA_GO_KEGG_HPO$Group=="SV - 240Kb -  "]<-"SV - 240Kb"
+Combined_ORA_GO_KEGG_HPO$Group[Combined_ORA_GO_KEGG_HPO$Group=="HGSVC - Hotspot -  "]<-"HGSVC - Hotspot"
+
+
+## Order Group, SNV, Indel, SV, HGSVC
+# FactorList<-c(
+#   "SNV\n240Kb\nPASS",
+#   "SNV\n240Kb\nRefCall",
+#   "SNV\n24Kb\nPASS",
+#   "SNV\n24Kb\nRefCall",
+#   "Indel\n240Kb\nPASS",
+#   "Indel\n240Kb\nRefCall",
+#   "Indel\n24Kb\nPASS",
+#   "Indel\n24Kb\nRefCall",
+#   "SV\n240Kb\n ",
+#   "SV\n24Kb\n ",
+#   "HGSVC\nHotspot\n "
+# )
+
+FactorList<-c(
+  "SNV - 240Kb - PASS",
+  "SNV - 240Kb - RefCall",
+  "SNV - 24Kb - PASS",
+  "SNV - 24Kb - RefCall",
+  "Indel - 240Kb - PASS",
+  "Indel - 240Kb - RefCall",
+  "Indel - 24Kb - PASS",
+  "Indel - 24Kb - RefCall",
+  "SV - 240Kb",
+  "SV - 24Kb",
+  "HGSVC - Hotspot"
+)
+
+
+# Any missing factors will be returned by the following:
+Combined_ORA_HCL$Group[!(Combined_ORA_HCL$Group %in% FactorList)]
+
+# Order the factors
+Combined_ORA_GO_KEGG_HPO$Group<-factor(Combined_ORA_GO_KEGG_HPO$Group,levels=FactorList, ordered = TRUE)
+Combined_ORA_HCL$Group<-factor(Combined_ORA_HCL$Group,levels=FactorList, ordered = TRUE)
+```
+
+```{r generate and plot Human Cell Landscape enrichment - Full, include=TRUE, fig.height=12, fig.width=7}
+size_circles_HCL<-ceiling(max(Combined_ORA_HCL$size, na.rm=TRUE)/5)*5
+
+SignificantLinesHCL<-c(1:nrow(Combined_ORA_HCL))[match(Combined_ORA_HCL$geneSet[as.numeric(factor(Combined_ORA_HCL$Significance))==1],HCL.order)]
+
+Plot_HCL_Full<-ggplot(Combined_ORA_HCL, aes(x=Group,y=geneSet))+
+  geom_hline(yintercept = SignificantLinesHCL, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Variant, size=size, col=Significance))+
+  scale_color_manual(values = c("black","darkgrey"))+
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="turbo", discrete=TRUE) +
+  scale_size_continuous(breaks=seq(0, size_circles_HCL, size_circles_HCL/5)) +
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  CS.THEME+
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=0, hjust=1, vjust=0.5, size=10),
+        axis.text.x=element_text(size=10, angle = 30, hjust = 1),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=10, b=10, l=1, unit="pt"),
+        legend.position="none", legend.justification="center",
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold", hjust = 0.5),
+        legend.key.size=unit(2,"null"))+
+  ggtitle("Human Cell Landscape\nEnriched Gene Sets")+
+  xlab("Variant enriched region class")
+
+ggsave2(filename = "Plot_HCL_Full.png", plot = Plot_HCL_Full, width = 7, height = 12, dpi = 300, units = "in")
+
+Plot_HCL_Full
+```
+
+```{r generate plot GO, KEGG, HPO enrichment - Full, include=FALSE}
+size_circles_GO_KEGG_HPO<-ceiling(max(Combined_ORA_GO_KEGG_HPO$size, na.rm=TRUE)/5)*5
+
+#SignificantLines_BP<-c(1:nrow(subset(Combined_ORA_GO_KEGG_HPO, Class=="BP")))[match(subset(Combined_ORA_GO_KEGG_HPO, Class=="BP")$geneSet[as.numeric(factor(subset(Combined_ORA_GO_KEGG_HPO, Class=="BP")$Significance))==1],ProcessTerms.order[ProcessTerms.order %in% subset(Combined_ORA_GO_KEGG_HPO, Class=="BP")$geneSet])]
+
+GO_BP_Plot<-ggplot(subset(Combined_ORA_GO_KEGG_HPO, Class=="BP"), aes(x=Group,y=Description))+
+  #geom_hline(yintercept = SignificantLines_BP, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Variant, size=size, col=Significance))+
+  scale_color_manual(values = c("black","darkgrey"))+
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="turbo", discrete=TRUE) +
+  scale_size_continuous(breaks=seq(0, size_circles_GO_KEGG_HPO, size_circles_GO_KEGG_HPO/5)) +
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  CS.THEME+
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=30, hjust=1, vjust=1, size=10),
+        axis.text.x=element_text(size=10, angle = -30, hjust = 0),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=10, b=10, l=1, unit="pt"),
+        legend.position="none", legend.justification="center",
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold", hjust = 0.5),
+        legend.key.size=unit(2,"null"))+
+  ggtitle("GO - Biological Process")+
+  xlab("Variant enriched region class")
+
+
+GO_CC_Plot<-ggplot(subset(Combined_ORA_GO_KEGG_HPO, Class=="CC"), aes(x=Group,y=Description))+
+  #geom_hline(yintercept = 1, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Variant, size=size, col=Significance))+
+  scale_color_manual(values = c("black","darkgrey"))+
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="turbo", discrete=TRUE) +
+  scale_size_continuous(breaks=seq(0, size_circles_GO_KEGG_HPO, size_circles_GO_KEGG_HPO/5)) +
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  CS.THEME+
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=30, hjust=1, vjust=1, size=10),
+        axis.text.x=element_text(size=10, angle = -30, hjust = 0),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=10, b=10, l=1, unit="pt"),
+        legend.position="none", legend.justification="center",
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold", hjust = 0.5),
+        legend.key.size=unit(2,"null"))+
+  ggtitle("GO - Cellular Component")+
+  xlab("Variant enriched region class")
+
+GO_MF_Plot<-ggplot(subset(Combined_ORA_GO_KEGG_HPO, Class=="MF"), aes(x=Group,y=Description))+
+  #geom_hline(yintercept = 1, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Variant, size=size, col=Significance))+
+  scale_color_manual(values = c("black","darkgrey"))+
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="turbo", discrete=TRUE) +
+  scale_size_continuous(breaks=seq(0, size_circles_GO_KEGG_HPO, size_circles_GO_KEGG_HPO/5)) +
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  CS.THEME+
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=30, hjust=1, vjust=1, size=10),
+        axis.text.x=element_text(size=10, angle = -30, hjust = 0),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=10, b=10, l=1, unit="pt"),
+        legend.position="none", legend.justification="center",
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold", hjust = 0.5),
+        legend.key.size=unit(2,"null"))+
+  ggtitle("GO - Molecular Function")+
+  xlab("Variant enriched region class")
+
+KEGG_Plot<-ggplot(subset(Combined_ORA_GO_KEGG_HPO, Class=="KEGG"), aes(x=Group,y=Description))+
+  #geom_hline(yintercept = 1, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Variant, size=size, col=Significance))+
+  scale_color_manual(values = c("black","darkgrey"))+
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="turbo", discrete=TRUE) +
+  scale_size_continuous(breaks=seq(0, size_circles_GO_KEGG_HPO, size_circles_GO_KEGG_HPO/5)) +
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  CS.THEME+
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=30, hjust=1, vjust=1, size=10),
+        axis.text.x=element_text(size=10, angle = -30, hjust = 0),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=10, b=10, l=1, unit="pt"),
+        legend.position="none", legend.justification="center",
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold", hjust = 0.5),
+        legend.key.size=unit(2,"null"))+
+  ggtitle("KEGG - Pathways")+
+  xlab("Variant enriched region class")
+
+HPO_Plot<-ggplot(subset(Combined_ORA_GO_KEGG_HPO, Class=="HPO"), aes(x=Group,y=Description))+
+  #geom_hline(yintercept = 1, color="black",lty="dashed",lwd=0.75)+
+  geom_point(shape=21, stroke=1, aes(fill=Variant, size=size, col=Significance))+
+  scale_color_manual(values = c("black","darkgrey"))+
+  scale_fill_viridis(begin=0.2, end=0.85, direction=-1, option="turbo", discrete=TRUE) +
+  scale_size_continuous(breaks=seq(0, size_circles_GO_KEGG_HPO, size_circles_GO_KEGG_HPO/5)) +
+  guides(fill = guide_legend(override.aes=list(size=5, shape=21, stroke=1)), size = guide_legend(override.aes=list(shape=21, stroke=1)))+
+  CS.THEME+
+  theme(panel.grid.major=element_line(color="gray90", linetype="solid"),
+        panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65),
+        panel.border=element_rect(color="black", size=1.5, linetype="solid"),
+        axis.line=element_blank(),axis.text.y=element_text(angle=30, hjust=1, vjust=1, size=10),
+        axis.text.x=element_text(size=10, angle = -30, hjust = 0),
+        axis.title.x=element_text(size=12),
+        plot.margin=margin(t=1, r=10, b=10, l=1, unit="pt"),
+        legend.position="none", legend.justification="center",
+        legend.direction="vertical", legend.box="vertical",
+        legend.text=element_text(size=10), legend.title=element_text(size=11, face="bold", hjust = 0.5),
+        legend.key.size=unit(2,"null"))+
+  ggtitle("HPO - Human Phenotype")+
+  xlab("Variant enriched region class")
+
+GO_KEGG_HPO_Panel<-plot_grid(GO_BP_Plot, GO_CC_Plot, GO_MF_Plot, KEGG_Plot, HPO_Plot, ncol=5, rel_widths = c(1.1,1,1.15,1,1))
+
+ggsave2(filename = "GO_KEGG_HPO_Panel.png", plot = GO_KEGG_HPO_Panel, width = 40, height = 26, dpi = 300, units = "in")
+```
+
+```{r plot GO, KEGG, HPO enrichment - Full, include=TRUE, fig.height=26, fig.width=40}
+GO_KEGG_HPO_Panel
+```
+
+
+
+
+
+
+
+
+
+
+

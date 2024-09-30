@@ -1,0 +1,183 @@
+---
+title: "CIGAR composition analysis"
+author: "CIG @ MGI"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/juanmacias/Library/CloudStorage/Box-Box/LawsonLab/JuanMacias/Postdoc/HPRC/ATACseq/AutomaticTesting/Latest/CigarCompositionAnalysis/")
+# Set input file path
+InputFile<-"CigarFlagCompositionTable.txt"
+
+# Set seed
+set.seed(0)
+
+# Load packages
+library(ggplot2)
+require(cowplot)
+library(viridis)
+library(tidyr)
+
+theme_set(theme_cowplot())
+
+# Set theme object
+CS.THEME<-theme(
+  panel.background = element_rect(fill="white"),
+  panel.grid.major=element_line(color="gray90", linetype="solid"), #adds major grid lines
+  panel.grid.minor=element_line(color="gray95", linetype="solid", size=0.65), #adds minor grid lines
+  panel.border=element_rect(fill=NA, color="black", size=1.5, linetype="solid"), #draws a black border around plot
+  axis.line=element_blank(),
+  text=element_text(colour = "black", family= "Arial")
+)
+```
+
+```{r runcode, include=FALSE}
+# Read input file
+CigarFlagCompositionTable<-read.table(InputFile, header=FALSE, sep="\t", stringsAsFactors=FALSE)
+colnames(CigarFlagCompositionTable)<-c("Count", "Chromosome", "Class", "Sample", "Replicate", "Genome")
+
+# Filter out chrM
+CigarFlagCompositionTable<-subset(CigarFlagCompositionTable, Chromosome!="chrM")
+
+subset(CigarFlagCompositionTable, !(Chromosome %in% c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY","chrM")) & Genome=="Paternal")
+
+
+# Clean up Genome names
+CigarFlagCompositionTable$Genome[CigarFlagCompositionTable$Genome=="pangenome.hg38"]<-"Pangenome"
+
+CigarFlagCompositionTable$Genome[CigarFlagCompositionTable$Genome=="BSPG.clipped.hg38"]<-"BSPG"
+
+CigarFlagCompositionTable$Genome[CigarFlagCompositionTable$Genome=="hg38.LOCAL"]<-"hg38"
+CigarFlagCompositionTable$Genome[CigarFlagCompositionTable$Genome=="hg38.NoBlackList"]<-"hg38nb"
+
+CigarFlagCompositionTable$Genome[grep(".maternal", CigarFlagCompositionTable$Genome)]<-"Maternal"
+CigarFlagCompositionTable$Genome[grep(".paternal", CigarFlagCompositionTable$Genome)]<-"Paternal"
+
+# sum across Chromosome, such that we have one value per class per genome per sample per replicate, excluding non primary chromosomes
+CigarFlagCompositionTable.GW<-aggregate(Count~Class+Genome+Sample+Replicate, data=subset(CigarFlagCompositionTable, Chromosome %in% c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY")), sum)
+
+# Change class names
+CigarFlagCompositionTable.GW$Class[CigarFlagCompositionTable.GW$Class==2]<-"Ungapped"
+CigarFlagCompositionTable.GW$Class[CigarFlagCompositionTable.GW$Class==1]<-"Gapped"
+CigarFlagCompositionTable.GW$Class[CigarFlagCompositionTable.GW$Class==0]<-"Other"
+CigarFlagCompositionTable$Class[CigarFlagCompositionTable$Class==2]<-"Ungapped"
+CigarFlagCompositionTable$Class[CigarFlagCompositionTable$Class==1]<-"Gapped"
+CigarFlagCompositionTable$Class[CigarFlagCompositionTable$Class==0]<-"Other"
+
+# Make wide by Class
+CigarFlagCompositionTable.GW<-spread(CigarFlagCompositionTable.GW, key=Class, value=Count)
+CigarFlagCompositionTable.GW$Total<-rowSums(CigarFlagCompositionTable.GW[,4:ncol(CigarFlagCompositionTable.GW)])
+CigarFlagCompositionTable.GW[,4:(ncol(CigarFlagCompositionTable.GW)-1)]<-CigarFlagCompositionTable.GW[,4:(ncol(CigarFlagCompositionTable.GW)-1)]/CigarFlagCompositionTable.GW$Total
+
+# Make wide by Chromosome
+CigarFlagCompositionTable.wide<-spread(CigarFlagCompositionTable, key=Class, value=Count)
+CigarFlagCompositionTable.wide$Total<-rowSums(CigarFlagCompositionTable.wide[,5:ncol(CigarFlagCompositionTable.wide)])
+CigarFlagCompositionTable.wide[,5:(ncol(CigarFlagCompositionTable.wide)-1)]<-CigarFlagCompositionTable.wide[,5:(ncol(CigarFlagCompositionTable.wide)-1)]/CigarFlagCompositionTable.wide$Total
+
+CigarFlagCompositionTable.wide$Chromosome[!(CigarFlagCompositionTable.wide$Chromosome %in% c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chrX", "chrY"))]<-"Non primary"
+
+# For each Sample by Replicate by genome, calculate the total of total and the calculate the composition of chromosome
+ChromSum<-aggregate(Total~Chromosome+Genome+Sample+Replicate, data=CigarFlagCompositionTable.wide, sum, na.rm=TRUE)
+# spread by Chromosome
+ChromSum.Wide<-spread(ChromSum, key=Chromosome, value=Total)
+# calculate sum of total across chromosomes
+ChromSum.Wide$Total<-rowSums(ChromSum.Wide[,4:ncol(ChromSum.Wide)], na.rm = TRUE)
+
+#subset(CigarFlagCompositionTable.wide, Sample=="HG00621" & Replicate=="A" & Genome=="hg38")
+#sum(subset(CigarFlagCompositionTable.wide, Sample=="HG00621" & Replicate=="A" & Genome=="hg38")$Total)
+
+# calculate composition of each chromosome
+ChromSum.Wide[,4:(ncol(ChromSum.Wide)-1)]<-ChromSum.Wide[,4:(ncol(ChromSum.Wide)-1)]/ChromSum.Wide$Total
+# Make long
+ChromSum.Wide<-gather(ChromSum.Wide, key=Chromosome, value=Total, -Genome, -Sample, -Replicate, -Total)
+
+# Plot the rate of ungapped alignments per genome
+PercentUnGapped.Genomewide<-ggplot(CigarFlagCompositionTable.GW, aes(x=Genome, y=Ungapped))+
+  geom_boxplot(outliers = FALSE) +
+  geom_jitter(width = 0.2, size=1) +
+  CS.THEME +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_cartesian(ylim = c(0.85,1))+
+  scale_y_continuous(labels = scales::percent)
+
+# Plot the rate of ungapped alignments per genome per sample per replicate, chromosome combined
+PercentUnGapped.Genomewide.split <- ggplot(CigarFlagCompositionTable.GW, aes(x=Genome, y=Ungapped)) +
+  geom_bar(stat = "identity") +
+  CS.THEME +
+  facet_grid(Replicate ~ Sample) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_cartesian(ylim = c(0.92,0.99))+
+  scale_y_continuous(labels = scales::percent)
+
+# Plot the rate of ungapped alignments per genome per sample per replicate, chromosome split
+PercentUnGapped.Chromosome.split <- ggplot(CigarFlagCompositionTable.wide, aes(x=Genome, y=Ungapped)) +
+  geom_boxplot(outliers = FALSE) +
+  geom_jitter(width = 0.2, size=0.5) +
+  CS.THEME +
+  facet_wrap(Chromosome~.) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_cartesian(ylim = c(0,1))+
+  scale_y_continuous(labels = scales::percent)
+
+# Plot the percent of alignments per chromosome per genome per sample per replicate
+Percent.PerChromosome.split <- ggplot(ChromSum.Wide, aes(x=Chromosome, y=Total)) +
+  geom_bar(stat = "identity") +
+  CS.THEME +
+  facet_grid(Genome ~ Sample) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_cartesian(ylim = c(0,0.4))+
+  scale_y_continuous(labels = scales::percent)
+
+GappedVersusUngappedChromosome<-ggplot(subset(CigarFlagCompositionTable.wide,Chromosome!="Non primary"),aes(x=Gapped,y=Ungapped,color=Genome,shape=Genome))+
+  geom_point(size=0.5)+
+  facet_grid(Replicate~Sample)+
+  scale_color_manual(values=c("#2D5879", "#4D5A22","#CAA66E","#F04857","#781746","#40106a","#555757"))+
+  #scale_color_viridis(discrete=TRUE, end = 0.8, begin = 0.1, option = "viridis")+
+  scale_y_continuous(labels = scales::percent)+
+  scale_x_continuous(labels = scales::percent)
+
+
+# Make Long
+CigarFlagCompositionTable.GW.long<-gather(CigarFlagCompositionTable.GW, Class, Fraction, Gapped:Ungapped)
+
+# Make a stacked composition plot, split by genome and faceted sample~replicate
+CigarCompositionPlot<-ggplot(CigarFlagCompositionTable.GW.long, aes(x=Genome, y=100*Fraction, fill=Class)) +
+  geom_bar(stat="identity") +
+  CS.THEME +
+  facet_grid(Replicate~Sample) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(limits = c(0,100), expand = c(0,0))+
+  scale_fill_manual(values=c("#2D5879", "#FF7F5D", "#555757"))+
+  theme(legend.position = "bottom")+
+  ylab("Percent of total alignments")
+```
+
+```{r Percent of total alignments per chromosome, fig.cap="Percent of alignments by chromosome split by sample and genome", fig.width=28, fig.height=8}
+Percent.PerChromosome.split
+```
+
+```{r Percent of alignmens gap-free split by genome, fig.cap="Percent of alignments gap-free by genome", fig.width=4, fig.height=3}
+PercentUnGapped.Genomewide
+```
+
+```{r Percent of alignmens gap-free split by sample and replicate, fig.cap="Percent of alignments gap-free by genome split by sample and replicate", fig.width=12, fig.height=4}
+PercentUnGapped.Genomewide.split
+```
+
+```{r Percent of alignmens gap-free split by chromosome, fig.cap="Percent of alignments gap-free by genome split by chromsomes", fig.width=10, fig.height=9}
+PercentUnGapped.Chromosome.split
+```
+```{r Gapped versus Ungapped per chromosome, fig.cap="Gapped versus Ungapped", fig.width=13, fig.height=4.8}
+GappedVersusUngappedChromosome
+```
+
+```{r Stacked composition plot, fig.cap="Stacked composition plot", fig.width=12, fig.height=6}
+CigarCompositionPlot
+```
+
+```{r Output table, include=TRUE}
+CigarFlagCompositionTable.GW
+```
+

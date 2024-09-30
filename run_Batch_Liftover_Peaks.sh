@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --mem=32G
+#SBATCH -n 1
+#SBATCH -N 1
+
+#SBATCH --array=1-10%10   # This will create 40 tasks numbered 1-40 and allow 10 concurrent jobs to run
+
+# [Alignment parameters lookup file]
+
+read BEDFILE PAFFILE OUTPUTTEMP OUTPUT RUN< <( sed -n ${SLURM_ARRAY_TASK_ID}p $1 )
+
+
+eval $( spack load --sh k8@0.2.4 )
+
+
+echo "lift bed file: "$BEDFILE
+echo "with paf file: "$PAFFILE
+echo "store output in: "$OUTPUT
+
+k8 /ref/hllab/software/paftools/paftools.js liftover -q 5 -l 50000 -d 1 $PAFFILE $BEDFILE > $OUTPUTTEMP
+
+awk -v RUN=$RUN -F "\t" '{print $0"\t"RUN}' $OUTPUTTEMP >$OUTPUT
+rm $OUTPUTTEMP
+
+
+
+echo "Complete!"
+
+echo "Lines in lift over output: "
+wc -l $OUTPUT
+
