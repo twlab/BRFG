@@ -5,7 +5,7 @@ This repo contains the code used in performing the study.
 Two compute systems were used in this study.
 The WashU HTCF and WashU Compute1 systems. HTCF is a slurm based system. Compute1 is a docker based system using LSF for job submission.
 
-- Workflows
+## Workflows/Code
   - ATAC-seq: [AIAP](AIAP)
   - RNA-seq: ENCODE
   - Hi-C: ENCODE
@@ -29,3 +29,17 @@ The WashU HTCF and WashU Compute1 systems. HTCF is a slurm based system. Compute
   - [ORA](Analysis_R_Scripts/ORA)
 - Liftover
   - [Liftover](Liftover)
+
+## Processed Data files
+- ATAC-seq:
+  - https://wangftp.wustl.edu/~jmacias/HPRC_ATACseq/
+  - https://wangftp.wustl.edu/~jmacias/ATACseq_Pangenome/
+- RNA-seq:
+  - https://wangftp.wustl.edu/~jmacias/HPRC_RNAseq/
+  - https://wangftp.wustl.edu/~jmacias/HPRC_RNAseq_Pangenome/
+- WGBS:
+  - https://wangftp.wustl.edu/~jmacias/HPRC_WGBS/
+- Hi-C:
+  - https://wangftp.wustl.edu/~jmacias/HPRC_HiC/
+
+## Epigenome browser session files
