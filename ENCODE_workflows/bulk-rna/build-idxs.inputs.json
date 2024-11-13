@@ -1,0 +1,7 @@
+{
+  "build_idxs.reference": "{{REF}}",
+  "build_idxs.annotation": "{{ANNO}}",
+  "build_idxs.spikeins": "/storage1/fs1/hprc/Active/raw-data/references/GRCh38/anno/gencode-v29/ERCC_phiX.fa.gz",
+  "build_idxs.genome": "{{GENOME}}",
+  "build_idxs.anno_version": "{{VERSION}}"
+}

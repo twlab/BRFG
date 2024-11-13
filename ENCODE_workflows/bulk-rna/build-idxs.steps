@@ -1,0 +1,41 @@
+call build_merged_annotation
+ input:
+  annotation
+  spikeins
+  genome
+  anno_version
+ output:
+  merged_annotation
+
+call build_transcripts_fasta
+ input:
+  reference
+  annotation
+ output:
+  File transcripts = "transcripts.fasta"
+
+call build_transcripts_idx
+ input:
+  reference = build_transcripts_fasta.transcripts
+ output:
+  File index = glob("*.idx")[0]
+
+call build_star_idx
+ input:
+  reference
+  spikeins
+  annotation
+  anno_version
+  genome
+ output:
+  File index = glob("*.tgz")[0]
+
+call build_rsem_idx
+ input:
+  reference=reference
+  spikeins=spikeins
+  annotation=annotation
+  anno_version=anno_version
+  genome=genome
+ output:
+  File index = glob("*.tgz")[0]

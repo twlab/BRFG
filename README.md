@@ -7,9 +7,9 @@ The WashU HTCF and WashU Compute1 systems. HTCF is a slurm based system. Compute
 
 ## Workflows/Code
   - ATAC-seq: [AIAP](AIAP)
-  - RNA-seq: ENCODE
-  - Hi-C: ENCODE
-  - WGBS:
+  - RNA-seq: [bulk-rna](ENCODE_workflows/bulk-rna)
+  - Hi-C: [hic](ENCODE_workflows/hic)
+  - WGBS: https://github.com/xzhuo/wgbs/tree/fan-branch
 - Post-processing analysis
   - Read tracing: [Read_Tracing](Read_Tracing)
   - QC analysis:

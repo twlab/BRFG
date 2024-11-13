@@ -1,0 +1,257 @@
+CALLS
+call get_ligation_site_regex
+ input:
+  restriction_enzymes
+ output:
+   ligation_site_regex 
+
+String ligation_site = select_first([ligation_site_regex, get_ligation_site_regex.ligation_site_regex])
+
+call normalize_assembly_name
+ input:
+  assembly_name
+ output:
+  normalized_assembly_name
+  assembly_is_supported
+
+
+SCATTER BASED ON REPLICATES FASTQs
+scatter(i in range(length(fastq)))
+ Array[FastqPair] replicate = fastq[i]
+ scatter(fastq_pair in replicate)
+  call align
+   input:
+    fastq_pair = fastq_pair
+    idx_tar = select_first([reference_index])
+    ligation_site = select_first([ligation_site])
+   output:
+    BamAndLigationCount
+     bam: "aligned.bam"
+     ligation_count: "ligation_count.txt"
+     single_ended: length(select_all([fastq_pair.read_2])) == 0
+  end scatter(fastq_pair in replicate)
+
+ if (is_nonspecific)
+ scatter(bam_and_ligation_count in align.bam_and_ligation_count)
+  call chimeric_sam_nonspecific
+   input:
+    bam = bam_and_ligation_count.bam
+    ligation_count
+    single_ended
+   output:
+    output_bam
+    stats
+ 
+ if (!is_nonspecific)
+ scatter(bam_and_ligation_count in align.bam_and_ligation_count)
+  call chimeric_sam_specific
+   input:
+    bam = bam_and_ligation_count.bam
+    ligation_count
+    restriction_sites
+    single_ended
+   output:
+    output_bam
+    stats
+
+ call merge [repicate FASTQs]
+  input:
+   bams [chimeric_sam_specific.output_bam/chimeric_sam_nonspecific.output_bam]
+   output_bam_filename
+  output:
+   bam
+
+ call dedup [repicate FASTQs]
+  input:
+   bam = merge.bam
+ output:
+   deduped_bam 
+
+ call bam_to_pre as bam_to_pre_for_stats
+  input:
+   bam = dedup.deduped_bam
+   quality = 1
+   output_filename_suffix = "_lib" + i
+  output:
+   pre = "merged_nodups_~{quality}~{output_filename_suffix}.txt.gz"
+   index = "merged_nodups_~{quality}~{output_filename_suffix}_index.txt.gz"
+
+ call calculate_stats as calculate_stats_on_library
+  inputs:
+   alignment_stats = flatten( select_all([chimeric_sam_specific.stats, chimeric_sam_nonspecific.stats]))
+    bam = dedup.deduped_bam
+    pre = bam_to_pre_for_stats.pre
+    restriction_sites = restriction_sites
+    chrom_sizes = select_first([chrsz])
+    ligation_site = select_first([ligation_site])
+    output_filename_suffix = "_lib" + i
+    single_ended = align.bam_and_ligation_count[0].single_ended
+   output:
+    stats = "stats_~{quality}~{output_filename_suffix}.txt"
+    stats_json = "stats_~{quality}~{output_filename_suffix}.json"
+    stats_hists = "stats_~{quality}~{output_filename_suffix}_hists.m"
+
+END SCATTER BASED ON REPLICATES FASTQs
+
+
+call merge as merge_replicates
+ inputs:
+  bams = dedup.deduped_bam
+ output:
+
+# convert alignable bam to pairs to be consistent with 4DN
+if ( !no_pairs && defined(chrsz)) # TRUE for our runs
+call bam_to_pre as bam_to_pre_mapq0
+ input:
+  bam = merge_replicates.bam
+  quality = 0
+ output:
+  pre = "merged_nodups_~{quality}~{output_filename_suffix}.txt.gz"
+  index = "merged_nodups_~{quality}~{output_filename_suffix}_index.txt.gz"
+
+call pre_to_pairs
+ input
+  pre = bam_to_pre_mapq0.pre
+  chrom_sizes = select_first([chrsz])
+ output:
+  out_file = "pairix.bsorted.pairs.gz"
+
+
+SCATTER BY QUALITIES [1, 30]
+ 
+scatter(i in range(length(qualities)))
+ call bam_to_pre
+  input:
+   bam = select_first([merge_replicates.bam])
+   quality = qualities[i]
+  output:
+   pre = "merged_nodups_~{quality}~{output_filename_suffix}.txt.gz"
+   index = "merged_nodups_~{quality}~{output_filename_suffix}_index.txt.gz"
+
+ if (intact && qualities[i] == 30) {
+ call create_accessibility_track
+  input:
+   pre = bam_to_pre.pre
+   chrom_sizes = select_first([chrsz])
+  output:
+   bigwig = "inter_30.bw"
+
+ call calculate_stats
+  input:
+   alignment_stats = flatten(select_all(flatten([chimeric_sam_specific.stats, chimeric_sam_nonspecific.stats])))
+   bam = select_first([merge_replicates.bam])
+   pre = bam_to_pre.pre
+   restriction_sites = restriction_sites
+   chrom_sizes = select_first([chrsz])
+   ligation_site = select_first([ligation_site])
+   quality = qualities[i]
+   single_ended = align.bam_and_ligation_count[0][0].single_ended
+  output:
+   stats = "stats_~{quality}~{output_filename_suffix}.txt"
+   stats_json = "stats_~{quality}~{output_filename_suffix}.json"
+   stats_hists = "stats_~{quality}~{output_filename_suffix}_hists.m"
+
+ call create_hic as create_hic_with_chrom_sizes
+  input:
+   pre = bam_to_pre.pre
+   pre_index = bam_to_pre.index
+   chrsz = select_first([chrsz])
+   restriction_sites = restriction_sites
+   quality = qualities[i]
+   stats = calculate_stats.stats
+   stats_hists = calculate_stats.stats_hists
+   resolutions = create_hic_resolutions
+   assembly_name = assembly_name
+   juicer_tools_heap_size_gb = create_hic_juicer_tools_heap_size_gb
+  output:
+   output_hic
+
+ File unnormalized_hic_file = select_first([ if (defined(create_hic.output_hic)) then create_hic.output_hic else create_hic_with_chrom_sizes.output_hic ])
+
+ call add_norm
+  input:
+   hic = unnormalized_hic_file
+   normalization_methods = normalization_methods
+   quality = qualities[i]
+  output:
+
+ if (!no_call_tads)
+ call arrowhead
+  input:
+   hic_file = add_norm.output_hic
+   quality = qualities[i]
+  output:
+   out_file = glob('*_~{quality}.bedpe.gz')[0]
+ end if (!no_call_tads)
+
+ if (!no_call_loops)
+ call hiccups
+  input:
+   hic_file = add_norm.output_hic
+   quality = qualities[i]
+  output:
+   merged_loops = "merged_loops_~{quality}.bedpe.gz"
+ end if (!no_call_loops)
+
+ if (defined(chrsz) && !no_eigenvectors)
+ call create_eigenvector
+    input:
+     hic_file = add_norm.output_hic
+     chrom_sizes = select_first([chrsz])
+     output_filename_suffix = "_" + qualities[i]
+    output:
+     eigenvector_wig = "eigenvector_~{resolution}~{output_filename_suffix}.wig"
+     eigenvector_bigwig = "eigenvector_~{resolution}~{output_filename_suffix}.bw"
+
+   call create_eigenvector as create_eigenvector_10kb
+    input:
+     hic_file = add_norm.output_hic
+     chrom_sizes = select_first([chrsz])
+     resolution = 10000
+     output_filename_suffix = "_" + qualities[i]
+    output:
+     eigenvector_wig = "eigenvector_~{resolution}~{output_filename_suffix}.wig"
+     eigenvector_bigwig = "eigenvector_~{resolution}~{output_filename_suffix}.bw"
+  end if (defined(chrsz) && !no_eigenvectors)
+
+END SCATTER BY QUALITIES
+
+call delta # Only run delta on MAPQ >= 30
+ input:
+  hic = if length(add_norm.output_hic) > 1 then add_norm.output_hic[1] else select_first([input_hic])
+  resolutions = delta_resolutions
+  models_path = delta_models_path
+ output:
+  loops = "~{stem}_loops_merged.bedpe.gz"
+  domains = "~{stem}_domains_merged.bedpe.gz"
+  stripes = "~{stem}_stripes_merged.bedpe.gz"
+  loop_domains = "~{stem}_loop_domains_merged.bedpe.gz"
+
+call localizer as localizer_delta
+ input:
+  hic = if length(add_norm.output_hic) > 1 then add_norm.output_hic[1] else select_first([input_hic])
+  loops = delta.loops
+ output:
+
+if (!no_slice)
+call slice as slice_25kb
+ input:
+  hic_file = hic_file
+  resolution = 25000
+ output:
+  subcompartments = "slice_subcompartment_clusters_~{resolution}.bed.gz"
+
+call slice as slice_50kb
+ input:
+  hic_file = hic_file
+  resolution = 50000
+ output:
+  subcompartments = "slice_subcompartment_clusters_~{resolution}.bed.gz"
+
+call slice as slice_100kb
+ input:
+  hic_file = hic_file
+  resolution = 100000
+ output:
+  subcompartments = "slice_subcompartment_clusters_~{resolution}.bed.gz"
+end if (!no_slice)

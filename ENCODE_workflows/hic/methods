@@ -1,0 +1,86 @@
+##
+# Hi-C Methods
+
+##
+# Data
+We used Hi-C data from the HPRC Year 1 samples HG00621, HG00741, HG01952, HG01978, and HG03516.
+Each sample has 2 replicates with 4 paired end sets for 16 fastq files, with reads 150 bps long.
+Total size of the FASTQ files averaged around 130 GB.
+
+##
+# Align
+Sample replicate FASTQ file pairs were aligned using BWA's "BWA-MEM" [] aligner.
+
+Ligation count is generated, but not used for ours
+
+# Chimera Sam Nonspecific
+Each resulting BAM from BWA-MEM alignment was processed with the ligation count file through Juicer's [] "adjust_insert_size.awk" and "chimeric_sam.awk" scripts producing a BAM.
+
+# Merge
+The BAMs from chimera processing were merged together with SWamtools [] "merge" and then sorted.
+
+# Dedup
+The merged replicate BAM was depulicated with Juicer's "dups_sam.awk" script.
+
+# Calculate Stats on Library
+Stats were calculated using Juicer's "stats_sub.awk" script and "juicer statistics" sub command.
+Stats files are saved as TXT, JSON, and HIST formats.
+
+##
+# Merge All Replicates
+The replicates were merged for each sample with Samtools "merge" to create a sorted and deduplicated BAM.
+
+##
+# Run Analysis Filter on Map Quality of 1 & 30
+# BAM to PRE
+The merged replicate BAM is converted to the "pre" input format using Juicer's "sam_to_pre.awk", filtering on mapping quality 1 and 30.
+The "pre" file is iundexed with Juicer's "index_by_chr.awk".
+
+# Create Hi-C
+Hi-C ("hic") files are created using the Juicer's "pre" command.
+
+# Add Norm
+The "hic" files are normalized with Juicer's "normalization_command".
+
+# Eignvector 5K & 10K
+Each Hi-C file is run through Aiden Lab's "newGW_Intra_Flip" to create eigenvectors at resolutions 5KB and 10KB.
+Then wigToBigWig [] was used to convert the eigenvector output "wig" to "bigwig" format"
+
+# Hiccups {Loops}
+Loops are called with Juicer's "hiccups" command.
+
+# Arrowhead {TADs}
+TADs are called with Juicer's "arrowhead" command.
+
+##
+# Use MapQ 30 Hi-C
+The Hi-C (Hi-C30) file with minimum mapping quality of 30 is then used to run 2 programs. 
+
+# Delta
+The Hi-C30 file is processed using Juicer's "straw" data extractor to run data through DELPHI [] (né DELTA), a set of deep learning neural networks for predicting chromatin loops, domains, and stripes.
+
+# Slice 25k 50k 100k
+Mixer Tools' [] "SLICE" (Subcompartment Landscape Identification via Clustering Enrichments) is run (resolutions: 25k, 50k, & 100k) to generate a bed file of subcompartment clusters.
+
+##
+# Citations
+[] BWA https://bio-bwa.sourceforge.net/
+Li H. and Durbin R. (2010) Fast and accurate long-read alignment with Burrows-Wheeler Transform. Bioinformatics, Epub. [PMID: 20080505]
+
+[] DELPHI (né DELTA) https://github.com/sa501428/deploy-delta
+?Muhammad Saad Shamim (Aiden Lab)
+
+[] Eigenvector https://github.com/aidenlab/EigenVector.git
+?Aiden Lab
+
+[] Juicer https://github.com/aidenlab/juicer
+Neva C. Durand, Muhammad S. Shamim, Ido Machol, Suhas S. P. Rao, Miriam H. Huntley, Eric S. Lander, and Erez Lieberman Aiden. "Juicer provides a one-click system for analyzing loop-resolution Hi-C experiments." Cell Systems 3(1), 2016.
+
+[] Mixer Tools https://github.com/sa501428/mixer-tools
+CITE?
+
+[] Samtools https://github.com/samtools/samtools
+Petr Danecek, James K Bonfield, Jennifer Liddle, John Marshall, Valeriu Ohan, Martin O Pollard, Andrew Whitwham, Thomas Keane, Shane A McCarthy, Robert M Davies, Heng Li | GigaScience, Volume 10, Issue 2, February 2021, giab008, https://doi.org/10.1093/gigascience/giab008
+
+[] wigToBigWig https://github.com/ENCODE-DCC/kentUtils_bin_v381
+?ENCODE DCC

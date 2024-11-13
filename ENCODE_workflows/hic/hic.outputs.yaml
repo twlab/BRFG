@@ -1,0 +1,31 @@
+hic.calculate_stats_on_library:
+  - stats
+  - stats_json
+  - stats_hists
+hic.dedup:
+  - deduped_bam 
+hic.create_hic_with_chrom_sizes:
+  - output_hic
+hic.add_norm:
+  - output_hic
+hic.create_eigenvector:
+  - eigenvector_wig
+  - eigenvector_bigwig
+hic.create_eigenvector_10kb:
+  - eigenvector_wig
+  - eigenvector_bigwig
+hic.arrowhead:
+  - out_file
+hic.hiccups:
+  - merged_loops
+hic.delta:
+ - domains
+ - loops
+ - loop_domains
+ - stripes
+hic.slice_25kb:
+  - subcompartments
+hic.slice_50kb:
+  - subcompartments
+hic.slice_100kb:
+  - subcompartments
