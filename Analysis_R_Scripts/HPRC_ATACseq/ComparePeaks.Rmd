@@ -1696,6 +1696,27 @@ groups.Genome[groups.Genome=="pangenome.hg38"]<-"pangenome"
 groups.Genome<-as.factor(groups.Genome)
 ```
 
+```{r cluster samples by PCA, include=TRUE, fig.width=12, fig.height=9}
+All_Original.Filtered.SharedAll.PCA.Wide.NAremoved[,2:ncol(All_Original.Filtered.SharedAll.PCA.Wide.NAremoved)]->DATA
+
+# make rownames a concatenation of groups.Sample,groups.Replicate,groups.Genome
+rownames(DATA)<-paste(groups.Sample,groups.Replicate,groups.Genome,sep="_")
+
+# Cluster Data, each row is a run, and each column is a peak
+## Make into a matrix
+DATA<-as.matrix(DATA)
+
+# normalize each column
+DATA<-scale(DATA)
+
+## make distance matrix
+distDATA<-dist(DATA)
+## Cluster
+clustDATA<-hclust(distDATA)
+## Plot dendrogram
+plot(clustDATA)
+```
+
 ```{r perform partial eta square estimation, include=TRUE}
 # Generate variance partitioning object
 PCA.VarObject<-cbind(res.pca$x,data.frame(Sample=groups.Sample),data.frame(Replicate=groups.Replicate),data.frame(Genome=groups.Genome))

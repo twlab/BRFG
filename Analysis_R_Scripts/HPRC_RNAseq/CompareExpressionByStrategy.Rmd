@@ -1043,6 +1043,27 @@ groups.Replicate <- as.factor(Combined.Wide.All$Replicate)
 groups.Genome <- as.factor(Combined.Wide.All$Genome)
 ```
 
+```{r cluster samples, include=TRUE, fig.width=16, fig.height=10}
+# generate data copy
+Combined.Wide.PCA.Cluster<-Combined.Wide.PCA
+
+# Make rownames the concatenation of Sample, Genome, Replicate, AbundanceCaller
+rownames(Combined.Wide.PCA.Cluster)<-paste(Combined.Wide.All$Sample,Combined.Wide.All$Genome,Combined.Wide.All$Replicate,Combined.Wide.All$AbundanceCaller,sep = "_")
+
+# scale data
+Combined.Wide.PCA.Cluster<-scale(Combined.Wide.PCA.Cluster)
+
+# calculate distance
+Combined.Wide.PCA.Cluster.Dist<-dist(Combined.Wide.PCA.Cluster)
+
+# cluster
+Combined.Wide.PCA.Cluster.Dendrogram<-hclust(Combined.Wide.PCA.Cluster.Dist, method = "ward.D2")
+
+# plot dendrogram
+Combined.Wide.PCA.Cluster.Dendrogram.Plot<-plot(Combined.Wide.PCA.Cluster.Dendrogram)
+
+```
+
 ```{r Get the partial eta squared values, include=TRUE}
 PCA.VarObject<-cbind(res.pca$x,data.frame(Sample=groups.Sample),data.frame(Replicate=groups.Replicate),data.frame(Genome=groups.Genome),data.frame(Method=groups.Method))
 
