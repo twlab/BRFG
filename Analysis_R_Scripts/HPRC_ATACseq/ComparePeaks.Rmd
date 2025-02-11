@@ -1697,7 +1697,9 @@ groups.Genome<-as.factor(groups.Genome)
 ```
 
 ```{r cluster samples by PCA, include=TRUE, fig.width=12, fig.height=9}
-All_Original.Filtered.SharedAll.PCA.Wide.NAremoved[,2:ncol(All_Original.Filtered.SharedAll.PCA.Wide.NAremoved)]->DATA
+#All_Original.Filtered.SharedAll.PCA.Wide.NAremoved[,2:ncol(All_Original.Filtered.SharedAll.PCA.Wide.NAremoved)]->DATA
+
+res.pca$x->DATA
 
 # make rownames a concatenation of groups.Sample,groups.Replicate,groups.Genome
 rownames(DATA)<-paste(groups.Sample,groups.Replicate,groups.Genome,sep="_")
@@ -1707,14 +1709,39 @@ rownames(DATA)<-paste(groups.Sample,groups.Replicate,groups.Genome,sep="_")
 DATA<-as.matrix(DATA)
 
 # normalize each column
-DATA<-scale(DATA)
+#DATA<-scale(DATA)
 
 ## make distance matrix
-distDATA<-dist(DATA)
+distDATA<-dist(DATA, upper = TRUE, diag = TRUE, method = "euclidean")
 ## Cluster
 clustDATA<-hclust(distDATA)
 ## Plot dendrogram
 plot(clustDATA)
+
+# Save distance matrix - full
+write.table(as.matrix(distDATA), file = "Full_distance_matrix.txt", sep = "\t", quote = FALSE, row.names = TRUE, col.names = TRUE)
+```
+
+```{r subset to only hg38 nb, include=TRUE}
+# Subset to only rep A and only "hg38 nb"
+DATA[groups.Replicate=="A" & groups.Genome=="hg38 nb",]->DATA.A.hg38.nb
+# Subset to only rep B and only "hg38 nb"
+DATA[groups.Replicate=="B" & groups.Genome=="hg38 nb",]->DATA.B.hg38.nb
+
+# Average the two replicates
+(DATA.A.hg38.nb+DATA.B.hg38.nb)/2->DATA.Avg.hg38.nb
+
+# make distance matrix
+distDATA.Avg.hg38.nb<-dist(DATA.Avg.hg38.nb, upper = TRUE, diag = TRUE, method = "euclidean")
+
+# Cluster
+clustDATA.Avg.hg38.nb<-hclust(distDATA.Avg.hg38.nb)
+
+# Plot dendrogram
+plot(clustDATA.Avg.hg38.nb)
+
+# Save distance matrix - hg38 nb
+write.table(as.matrix(distDATA.Avg.hg38.nb), file = "hg38_nb_distance_matrix.txt", sep = "\t", quote = FALSE, row.names = TRUE, col.names = TRUE)
 ```
 
 ```{r perform partial eta square estimation, include=TRUE}
