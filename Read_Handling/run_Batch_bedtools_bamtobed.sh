@@ -5,7 +5,7 @@
 
 read BAM BED < <( sed -n ${SLURM_ARRAY_TASK_ID}p $1 )
 
-eval $( spack load --sh bedtools2@2.30.0 )
+eval $( spack load --sh bedtools2@2.30.0/f3mnrck )
 
 echo "BAM: $BAM"
 echo "BED: $BED"
