@@ -10,7 +10,7 @@
 read INPUT < <( sed -n ${SLURM_ARRAY_TASK_ID}p $1 )
 
 echo "Loading software..."
-eval $( spack load --sh samtools@1.13 )
+eval $( spack load --sh samtools@1.13/5dgya4q )
 
 # print parameters to log
 echo "INPUT: $INPUT"
